@@ -388,6 +388,22 @@
     } catch (e) { toast(e.message); }
     finally { S.loading = false; statusLine(); render(); }
   }
+
+  /** Files sent with the phone's Share menu (for example from the Google Drive app) are parked briefly by the
+   *  service worker, read here, then deleted straight away. */
+  async function checkInbox() {
+    if (S.locked || S.loading || !('caches' in window)) return;
+    let c; try { c = await caches.open('ledger-inbox'); } catch { return; }
+    const keys = await c.keys(); if (!keys.length) return;
+    const files = [];
+    for (const k of keys) {
+      const r = await c.match(k); if (!r) continue;
+      const name = decodeURIComponent(r.headers.get('x-name') || 'shared.pdf');
+      files.push(new File([await r.blob()], name, { type: 'application/pdf' }));
+    }
+    try { await addLocalFiles(files); }
+    finally { for (const k of await c.keys()) await c.delete(k); }
+  }
   function chooseLocalFiles() {
     const inp = document.createElement('input');
     inp.type = 'file'; inp.multiple = true; inp.accept = 'application/pdf,.pdf';
@@ -856,6 +872,7 @@
   function renderData() {
     const el = $('#view-data');
     const ready = S.config.clientId && S.config.apiKey && S.config.projectNumber;
+    const c0 = S.config;
     const cov = S.statements.length ? coverage() : null;
     const repays = S.txns.filter(t => t.repayStatus).slice(-6).reverse();
     const lastIsa = S.isa[S.isa.length - 1], lastPen = S.pension[S.pension.length - 1];
@@ -865,7 +882,7 @@
       <h2>Add statements</h2>
       <div class="card stack">
         <button class="btn" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add PDFs</button>
-        <p class="muted small" style="margin:0">Opens your phone's file chooser. Go to <b>Google Drive</b> (or Downloads), open a statements folder, then <b>⋮ → Select all</b> and tap <b>Select</b>. Choose the whole folder every time if you like: the app recognises statements it has already read and only reads new ones. Nothing is uploaded.</p>
+        <p class="muted small" style="margin:0">Opens your phone's file chooser. Go to <b>Google Drive</b> (or Downloads), open a statements folder, then <b>⋮ → Select all</b> and tap <b>Select</b>. <b>Or:</b> in the Google Drive app, select the PDFs, tap <b>Share → Ledger</b>. Choose the whole folder every time if you like: the app recognises statements it has already read and only reads new ones. Nothing is uploaded.</p>
       </div>
       ${cov ? `<h2>Statement coverage</h2>
       <div class="card"><div class="grid"><span></span>${cov.months.map(m => `<span class="h">${MON[+m.slice(5) - 1]}</span>`).join('')}
@@ -875,7 +892,7 @@
       ${cov.missing.length || cov.gaps.length ? `<div class="card notice small">${cov.missing.length ? `<b>Missing:</b> ${cov.missing.map(esc).join(', ')}.` : ''}${cov.gaps.length ? `<br><b>Gap in bank statements:</b> ${cov.gaps.map(esc).join('; ')}.` : ''}</div>` : `<div class="card notice good small">Everything up to date.</div>`}
       ${repays.length ? `<h2>Card repayments from the joint account</h2><div class="card"><ul class="list">${repays.map(t => `<li class="tap" data-act="txn" data-v="${t.key}"><div class="who"><b>${/AMERICAN EXP|AMEX/i.test(t.desc) ? 'Amex' : 'Tesco'} · paid ${niceShort(t.date)}</b><span>${t.repayStatus === 'matched' ? 'matches the card statement balance' : t.repayStatus === 'covered' ? 'card statements loaded, no exact balance match' : 'no card statement yet: counted as spending'}</span></div><span class="${t.repayStatus === 'matched' ? 'in' : t.repayStatus === 'covered' ? 'muted' : 'out'}">${gbp(-t.amount)} ${t.repayStatus === 'matched' ? '✓' : '?'}</span></li>`).join('')}</ul></div>` : ''}` : ''}
 
-      <h2>Or sync with Google Drive</h2>
+      ${ready && c0.on ? `      <h2>Or sync with Google Drive</h2>
       <div class="card stack">
         <div class="row" style="flex-wrap:wrap">
           <button class="btn ghost" data-act="pick" ${ready ? '' : 'disabled'}>Pick statements</button>
@@ -887,6 +904,7 @@
         ${S.ignored.length ? `<p class="muted small" style="margin:0">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app. <button class="btn ghost slim" data-act="unignore">Use them again</button></p>` : ''}
       </div>
 
+` : ''}
       ${groups.map(([type, label]) => { const list = S.statements.filter(s => s.type === type).slice().reverse(); return list.length ? `<h2>${label} (${list.length})</h2>
       <div class="card"><ul class="list">${list.map(s => `<li><div class="who"><b>${s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end))}</b><span>${esc(s.name)}${s.count ? ' · ' + s.count + ' transactions' : ''}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}</div><span class="${s.ok ? 'in' : 'out'}">${s.ok ? '✓' : '⚠'}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`).join('')}</ul></div>` : ''; }).join('')}
       ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div>${s.id ? `<button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button>` : ''}</li>`).join('')}</ul></div>` : ''}
@@ -897,15 +915,6 @@
   function renderSettings() {
     const el = $('#view-settings'); const c = S.config;
     el.innerHTML = `
-      <h2>Google connection (one-off)</h2>
-      <div class="card stack">
-        <p class="small muted" style="margin:0">These come from your own Google Cloud project. The setup guide walks through it in about 15 minutes. They are stored only on this phone.</p>
-        <label class="field">OAuth Client ID<input id="c-id" value="${esc(c.clientId)}" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off"></label>
-        <label class="field">API key (restricted to the Picker API)<input id="c-key" value="${esc(c.apiKey)}" placeholder="AIza…" autocomplete="off"></label>
-        <label class="field">Project number<input id="c-proj" value="${esc(c.projectNumber)}" inputmode="numeric" placeholder="123456789012" autocomplete="off"></label>
-        <button class="btn" data-act="save-config">Save</button>
-      </div>
-
       <h2>Your categorisation rules (${S.rules.length})</h2>
       <div class="card stack">
         <p class="small muted" style="margin:0">If a transaction's description contains the text, it gets that category. Your rules run before the built-in ones. Tip: tap any transaction to fix its category, and a rule is added for you.</p>
@@ -927,6 +936,16 @@
       <h2>Appearance</h2>
       <div class="card"><div class="seg" id="theme">${['auto', 'light', 'dark'].map(t => `<button data-v="${t}" class="${(store.get('theme', 'auto')) === t ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div></div>
 
+      <h2>Optional: Google Drive sync</h2>
+      <details class="card" ${c.on ? 'open' : ''}><summary class="small" style="cursor:pointer">Not needed if you use <b>Add PDFs</b>. Tap to set up.</summary>
+        <div class="stack" style="margin-top:10px">
+          <p class="small muted" style="margin:0">Lets the app fetch statements from Google Drive itself, using your own Google Cloud project (see the end of the setup guide). Leave blank otherwise.</p>
+          <label class="field">OAuth Client ID<input id="c-id" value="${esc(c.clientId)}" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off"></label>
+          <label class="field">API key (restricted to the Picker API)<input id="c-key" value="${esc(c.apiKey)}" placeholder="AIza…" autocomplete="off"></label>
+          <label class="field">Project number<input id="c-proj" value="${esc(c.projectNumber)}" inputmode="numeric" placeholder="123456789012" autocomplete="off"></label>
+          <button class="btn" data-act="save-config">Save</button>
+        </div></details>
+
       <h2>Saved data</h2>
       <div class="card stack small">
         ${!S.meta ? '<div class="muted">Nothing saved yet. Your first sync saves what it reads here, encrypted.</div>' : `
@@ -939,13 +958,13 @@
 
       <h2>Privacy</h2>
       <div class="card stack small">
-        <div>• Statement PDFs are opened from Google Drive into this phone's memory, read, then discarded. The PDFs are never saved.</div>
+        <div>• Statement PDFs are read in this phone's memory, then discarded. The PDFs are never saved or uploaded.</div>
         <div>• What's read from them is saved on this phone with AES-256 encryption, so the app opens straight away and only new statements are downloaded.</div>
-        <div>• No server, no analytics, no AI. The only network calls go to Google, to fetch the files you picked.</div>
+        <div>• No server, no analytics, no AI. The app doesn't contact anyone, apart from Google if you set up the optional Drive sync.</div>
         <div>• Also saved on this phone: the settings above, your rules, saved reports, and category corrections (stored as one-way hashes).</div>
-        <div class="row"><button class="btn danger" data-act="sign-out">Sign out of Google</button><button class="btn danger" data-act="forget">Forget everything</button></div>
+        <div class="row">${c.clientId ? '<button class="btn danger" data-act="sign-out">Sign out of Google</button>' : '<span></span>'}<button class="btn danger" data-act="forget">Forget everything</button></div>
       </div>
-      <p class="muted small" style="text-align:center">Household Ledger v2.0 · bank, cards, payslips, ISA and pension</p>`;
+      <p class="muted small" style="text-align:center">Household Ledger v2.2 · bank, cards, payslips, ISA and pension</p>`;
     let dir = '';
     $('#r-dir').addEventListener('click', e => { if (e.target.dataset.v === undefined) return; dir = e.target.dataset.v; [...$('#r-dir').children].forEach(b => b.classList.toggle('on', b === e.target)); });
     $('[data-act="add-rule"]').addEventListener('click', () => {
@@ -980,7 +999,7 @@
           const pin = $('#pin').value; if (!pin) return;
           a.disabled = true;
           try { await openVault(await keyFromPin(pin, S.meta.salt)); } catch { a.disabled = false; $('#pin').value = ''; return toast('Wrong passcode'); }
-          statusLine(); return go('home');
+          statusLine(); go('home'); return checkInbox();
         }
         case 'lock': return lock();
         case 'change-pin': { const pin = await askNewPin(S.meta && S.meta.mode === 'pin'); if (pin === undefined) return; if (pin === null && S.meta && S.meta.mode !== 'pin') return; await setPin(pin); renderSettings(); return toast(pin ? 'Passcode set' : 'Saved without a passcode'); }
@@ -1005,7 +1024,7 @@
         case 'save-preset': { const name = prompt('Name this report', f.q || (f.cats[0] || 'My report')); if (!name) return; S.presets.push({ name, filter: JSON.parse(JSON.stringify(f)) }); store.set('presets', S.presets); renderReports(); return toast('Saved. It appears at the top of Reports.'); }
         case 'preset': S.filter = Object.assign(blankFilter(), JSON.parse(JSON.stringify(S.presets[+v].filter))); return renderReports();
         case 'del-preset': S.presets.splice(+v, 1); store.set('presets', S.presets); return renderSettings();
-        case 'save-config': S.config = { clientId: $('#c-id').value.trim(), apiKey: $('#c-key').value.trim(), projectNumber: $('#c-proj').value.trim() }; store.set('config', S.config); S.token = null; return toast('Saved');
+        case 'save-config': S.config = { clientId: $('#c-id').value.trim(), apiKey: $('#c-key').value.trim(), projectNumber: $('#c-proj').value.trim(), on: !!$('#c-id').value.trim() }; store.set('config', S.config); S.token = null; return toast('Saved');
         case 'del-rule': S.rules.splice(+v, 1); store.set('rules', S.rules); recategorise(); return renderSettings();
         case 'import-rules': {
           let arr; try { arr = JSON.parse($('#r-json').value); } catch { return toast('That is not valid JSON.'); }
@@ -1036,7 +1055,13 @@
 
   async function start() {
     applyTheme();
-    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => { });
+      // When a new version of the app has installed itself, reload once so you're running it.
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded && !S.loading) { reloaded = true; location.reload(); } });
+    }
     if (new URLSearchParams(location.search).has('demo')) return loadDemo();
     try {
       S.meta = await idb.get('meta') || null;
@@ -1044,6 +1069,8 @@
       else if (S.meta && S.meta.mode === 'pin') S.locked = true;
     } catch (e) { toast('Could not open the saved data: ' + e.message); }
     statusLine(); render();
+    if (new URLSearchParams(location.search).has('shared')) { history.replaceState(null, '', location.pathname); if (!S.locked) go('data'); }
+    checkInbox();
   }
   start();
 })();
