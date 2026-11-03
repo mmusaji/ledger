@@ -1,9 +1,9 @@
-/* Household Ledger v2 — reads your statements from the Google Drive folders you pick,
+/* Household Ledger v2 — reads the statement PDFs you tick in Google Drive,
  * entirely on this phone. Nothing is sent anywhere except Google (to fetch the files you chose).
  * Statement PDFs are read in memory and never saved. What is read from them is saved on this
  * phone in IndexedDB, encrypted with AES-GCM (key from your passcode via PBKDF2), so the app
  * opens instantly and each sync only downloads statements that are new or have changed.
- * Also saved on this phone: Google settings, the folders you picked, your rules,
+ * Also saved on this phone: Google settings, files you removed from the app, your rules,
  * category corrections (stored as hashes) and saved report filters.
  */
 (function () {
@@ -67,7 +67,8 @@
     hideOneOffs: store.get('hideOneOffs', false),
     token: null, tokenExp: 0,
     statements: [], skipped: [], txns: [], payslips: [], isa: [], pension: [],
-    folders: store.get('folders', {}), // subfolders found inside picked folders: id -> { name, path, source, include }
+    ignored: store.get('ignored', []), // files you removed from the app; Google may still list them
+    lastParent: store.get('lastParent', ''),
     files: {}, lastSync: null, key: null, meta: null, locked: false, hiddenAt: 0, sheetLocked: false,
     demo: false, loading: false, progress: 0,
     view: 'home', period: 'latest', payIdx: null,
@@ -84,14 +85,14 @@
     entries.forEach(e => {
       const r = e.result;
       if (r && r.period && r.type && r.type !== 'unsupported' && r.type !== 'unreadable') read.push(e);
-      else skipped.push({ name: e.name, why: e.skipped || (r && r.problems && r.problems[0]) || 'Not read', type: r && r.type });
+      else skipped.push({ id: e.id, name: e.name, why: e.skipped || (r && r.problems && r.problems[0]) || 'Not read', type: r && r.type });
     });
     // The same statement saved twice (e.g. "tescobank (3).pdf" and "(4)") is only counted once.
     read.sort((a, b) => (b.result.ok - a.result.ok) || a.name.localeCompare(b.name));
     const seen = new Map(), kept = [];
     read.forEach(e => {
       const r = e.result; const k = [r.type, (r.holders || []).join(','), r.period.start, r.period.end].join('|');
-      if (seen.has(k)) skipped.push({ name: e.name, why: 'Duplicate of ' + seen.get(k), dup: true });
+      if (seen.has(k)) skipped.push({ id: e.id, name: e.name, why: 'Duplicate of ' + seen.get(k), dup: true });
       else { seen.set(k, e.name); kept.push(e); }
     });
     S.statements = kept.map(e => {
@@ -197,71 +198,35 @@
     await loadScript('https://apis.google.com/js/api.js');
     await new Promise(r => gapi.load('picker', r));
     return new Promise(res => {
-      const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
-        .setMimeTypes('application/pdf,application/vnd.google-apps.folder')
-        .setIncludeFolders(true).setSelectFolderEnabled(true);
-      const lastFolder = S.sources.filter(s => s.type === 'folder').map(s => s.parent).filter(Boolean).pop();
-      if (lastFolder) view.setParent(lastFolder);
+      // Google only lets this app open the exact files you tick here, never the rest of your Drive.
+      const browse = new google.picker.DocsView(google.picker.ViewId.DOCS)
+        .setMimeTypes('application/pdf').setIncludeFolders(true).setSelectFolderEnabled(false).setLabel('Folders');
+      if (S.lastParent) browse.setParent(S.lastParent);
+      const flat = new google.picker.DocsView(google.picker.ViewId.PDFS).setLabel('All PDFs');
       new google.picker.PickerBuilder()
         .setAppId(S.config.projectNumber).setOAuthToken(tok).setDeveloperKey(S.config.apiKey)
-        .addView(view).enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
-        .setTitle('Choose your statement folders (bank, cards, payslips, investments)')
+        .addView(browse).addView(flat).enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+        .setMaxItems(500).setTitle('Tick your statements (bank, cards, payslips, ISA, pension)')
         .setCallback(d => {
           if (d.action === google.picker.Action.PICKED) {
-            d.docs.forEach(doc => {
-              if (S.sources.some(s => s.id === doc.id)) return;
-              S.sources.push({ id: doc.id, name: doc.name, type: doc.mimeType === 'application/vnd.google-apps.folder' ? 'folder' : 'file', parent: doc.parentId || '' });
-            });
-            store.set('sources', S.sources); res(true);
-          } else if (d.action === google.picker.Action.CANCEL) res(false);
+            const ids = d.docs.map(x => x.id);
+            S.ignored = S.ignored.filter(id => !ids.includes(id)); store.set('ignored', S.ignored);
+            const parent = d.docs.map(x => x.parentId).filter(Boolean).pop();
+            if (parent) { S.lastParent = parent; store.set('lastParent', parent); }
+            res(d.docs.length);
+          } else if (d.action === google.picker.Action.CANCEL) res(0);
         }).build().setVisible(true);
     });
   }
-  const FOLDER = 'application/vnd.google-apps.folder';
-  async function listChildren(id) {
+  /** Every PDF you have given this app, on any device. With the drive.file permission Google returns nothing else. */
+  async function listGranted() {
     const out = []; let pageToken = '';
     do {
-      const q = encodeURIComponent(`'${id}' in parents and trashed=false and (mimeType='application/pdf' or mimeType='${FOLDER}')`);
-      const j = await drive(`files?q=${q}&fields=nextPageToken,files(id,name,mimeType,md5Checksum,modifiedTime)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? '&pageToken=' + pageToken : ''}`);
+      const q = encodeURIComponent(`mimeType='application/pdf' and trashed=false`);
+      const j = await drive(`files?q=${q}&fields=nextPageToken,files(id,name,md5Checksum,modifiedTime)&pageSize=500&spaces=drive${pageToken ? '&pageToken=' + pageToken : ''}`);
       out.push(...j.files); pageToken = j.nextPageToken || '';
     } while (pageToken);
-    return out;
-  }
-  /** Every PDF in a picked folder and the subfolders you've chosen to include.
-   *  Subfolders you haven't reviewed yet are not opened; they're returned so you can be asked first. */
-  async function listTree(src) {
-    const pdfs = [], unreviewed = [], seen = new Set([src.id]);
-    const queue = [{ id: src.id, path: src.name, depth: 0 }];
-    while (queue.length) {
-      const f = queue.shift();
-      for (const k of await listChildren(f.id)) {
-        if (k.mimeType === FOLDER) {
-          if (seen.has(k.id) || f.depth >= 6) continue;
-          seen.add(k.id);
-          const path = f.path + ' › ' + k.name;
-          const rec = S.folders[k.id];
-          if (!rec || typeof rec.include !== 'boolean') { S.folders[k.id] = { name: k.name, path, source: src.id }; unreviewed.push(k.id); continue; }
-          rec.path = path; rec.name = k.name; rec.source = src.id;
-          if (rec.include) queue.push({ id: k.id, path, depth: f.depth + 1 });
-        } else pdfs.push(Object.assign(k, { folderPath: f.path }));
-      }
-    }
-    return { pdfs, unreviewed };
-  }
-  function askFolders(ids) {
-    return new Promise(res => {
-      S.sheetLocked = true;
-      $('#sheet-body').innerHTML = `<div class="stack">
-        <b style="font-size:17px">Which subfolders hold statements?</b>
-        <p class="muted small" style="margin:0">Tick only the folders with bank, card, payslip or investment statements. Folders you leave unticked are never opened. You can change this later on the Statements tab.</p>
-        <ul class="list">${ids.map(id => `<li><label style="display:flex;gap:10px;align-items:flex-start;width:100%"><input type="checkbox" data-folder="${esc(id)}" style="margin-top:3px"><span><b>${esc(S.folders[id].name)}</b><br><span class="muted small">${esc(S.folders[id].path)}</span></span></label></li>`).join('')}</ul>
-        <button class="btn" id="f-ok">Continue</button></div>`;
-      $('#f-ok').onclick = () => {
-        document.querySelectorAll('[data-folder]').forEach(c => { S.folders[c.dataset.folder].include = c.checked; });
-        store.set('folders', S.folders); S.sheetLocked = false; $('#sheet').close(); res();
-      };
-      $('#sheet').showModal();
-    });
+    return out.filter(f => !S.ignored.includes(f.id));
   }
 
   // ---------- saved data: encrypted on this phone (IndexedDB) ----------
@@ -337,37 +302,20 @@
     if (S.locked) return status('Locked');
     if (!S.statements.length) return status('');
     const d = S.lastSync ? new Date(S.lastSync).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never';
-    status(`synced ${d}`);
+    status(`updated ${d}`);
   }
 
   /** Bring the saved data up to date: only new or changed PDFs are downloaded and read. */
   async function syncDrive() {
-    if (!S.sources.length) { toast('Pick your statement folders first.'); go('data'); return; }
     if (S.loading) return;
     S.loading = true; S.progress = 0; status('Checking Google Drive…'); render();
     let added = 0, changed = 0, removed = 0, failed = 0; const notes = [];
     try {
-      const listed = [];
-      for (const src of S.sources) {
-        if (src.type === 'folder') {
-          let tree = await listTree(src);
-          for (let round = 0; tree.unreviewed.length && round < 6; round++) {
-            status('Waiting for you to choose folders…');
-            await askFolders(tree.unreviewed);
-            status('Checking Google Drive…');
-            tree = await listTree(src);
-          }
-          store.set('folders', S.folders);
-          if (!tree.pdfs.length) notes.push({ name: src.name, why: 'No PDFs found in this folder or the subfolders you included. If there should be, Google may not have shared them with the app: tap “Add from Google Drive” and select the statements or subfolder directly.' });
-          listed.push(...tree.pdfs);
-        } else {
-          try { listed.push(await drive(`files/${src.id}?fields=id,name,md5Checksum,modifiedTime&supportsAllDrives=true`)); }
-          catch (e) { if (e.status !== 404) throw e; notes.push({ name: src.name, why: 'No longer in Google Drive.' }); }
-        }
-      }
+      const listed = await listGranted();
+      if (!listed.length && !Object.keys(S.files).some(id => id.startsWith('local:'))) notes.push({ name: 'No statements yet', why: 'Tap “Add PDFs” (or “Pick statements”) to choose your statement PDFs.' });
       // Only reached if every listing worked, so nothing is forgotten because of a network blip.
       const current = new Map(listed.map(f => [f.id, f]));
-      for (const id of Object.keys(S.files)) if (!current.has(id)) { delete S.files[id]; removed++; }
+      for (const id of Object.keys(S.files)) if (!id.startsWith('local:') && !current.has(id)) { delete S.files[id]; removed++; }
       const fresh = f => { const c = S.files[f.id]; return c && c.v === PARSER_VERSION && (f.md5Checksum ? c.md5 === f.md5Checksum : c.modified === f.modifiedTime); };
       const todo = [...current.values()].filter(f => !fresh(f));
       if (todo.length) await ensureKey();
@@ -401,6 +349,50 @@
     } catch (e) {
       toast(e.message);
     } finally { S.loading = false; statusLine(); render(); }
+  }
+
+  /** Read PDFs chosen with the phone's own file chooser (which can browse Google Drive and "Select all").
+   *  Each file is identified by a fingerprint of its contents, so choosing a whole folder again
+   *  only reads the statements that are new. Nothing is uploaded anywhere. */
+  async function addLocalFiles(list) {
+    const fileList = [...list].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
+    if (!fileList.length) return toast('No PDFs chosen.');
+    if (S.loading) return;
+    S.loading = true; S.progress = 0; render();
+    let added = 0, known = 0, skippedIgnored = 0; const notes = [];
+    try {
+      await ensureKey();
+      for (let i = 0; i < fileList.length; i++) {
+        const f = fileList[i];
+        status(`Reading ${i + 1}/${fileList.length}`); S.progress = (i + 1) / fileList.length;
+        const bar = $('#progress div'); if (bar) bar.style.width = (S.progress * 100) + '%';
+        try {
+          let bytes = await f.arrayBuffer();
+          const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+          const id = 'local:' + [...digest.slice(0, 12)].map(b => b.toString(16).padStart(2, '0')).join('');
+          if (S.ignored.includes(id)) { skippedIgnored++; continue; }
+          if (S.files[id] && S.files[id].v === PARSER_VERSION) { known++; continue; }
+          const entry = { name: f.name, md5: '', modified: '', v: PARSER_VERSION, src: 'local' };
+          const pages = await P.extractPages(window.pdfjsLib, bytes);
+          bytes = null; // the PDF itself is dropped as soon as it has been read
+          const r = RD.readStatement(pages, f.name);
+          if (r.period && r.type !== 'unsupported' && r.type !== 'unreadable') entry.result = r;
+          else entry.skipped = (r.problems || [])[0] || 'Not a statement this app reads';
+          S.files[id] = entry; added++;
+          if (added % 5 === 0) await saveVault();
+        } catch (e) { notes.push({ name: f.name, why: 'Could not read: ' + e.message }); }
+      }
+      S.lastSync = new Date().toISOString(); S.demo = false;
+      await saveVault(); rebuild(notes);
+      toast(`${added} new file${added === 1 ? '' : 's'} read` + (known ? `, ${known} already in the app` : '') + (skippedIgnored ? `, ${skippedIgnored} removed earlier and left out` : ''));
+    } catch (e) { toast(e.message); }
+    finally { S.loading = false; statusLine(); render(); }
+  }
+  function chooseLocalFiles() {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.multiple = true; inp.accept = 'application/pdf,.pdf';
+    inp.onchange = () => addLocalFiles(inp.files);
+    inp.click();
   }
 
   // ---------- sample data (invented) so the app can be explored before setup ----------
@@ -471,8 +463,8 @@
     target.innerHTML = `<div class="card empty">
       ${S.loading ? `<p><b>Reading your statements…</b></p><div class="progress" id="progress"><div style="width:${S.progress * 100}%"></div></div>` : `
       <p><b>${what || 'No statements yet'}</b></p>
-      <p class="muted small">${!ready ? 'First, add your Google settings (one-off, see Settings).' : S.sources.length ? 'The first sync reads every statement. After that, only new ones are downloaded.' : 'Pick your statement folders in Google Drive.'}</p>
-      ${!ready ? `<button class="btn" data-act="go-settings">Open Settings</button>` : S.sources.length ? `<button class="btn" data-act="load">Sync statements</button>` : `<button class="btn" data-act="pick">Choose folders in Google Drive</button>`}
+      <p class="muted small">Tap <b>Add PDFs</b>, open your statements folder (your phone's file chooser can browse Google Drive) and choose <b>Select all</b>. Only statements the app hasn't seen before are read.</p>
+      <button class="btn" data-act="add-local">Add PDFs</button>
       ${S.txns.length ? '' : `<div><button class="btn ghost" style="margin-top:10px" data-act="demo">Explore with sample data</button></div>`}`}
     </div>`;
   }
@@ -573,7 +565,7 @@
 
     el.innerHTML = `
       ${S.demo ? `<div class="card notice small">You are looking at <b>invented sample data</b>. Sync your statements from the Statements tab.</div>` :
-        `<div class="row small"><span class="muted">${S.loading ? 'Syncing…' : 'Last synced ' + esc(synced)}</span><button class="btn ghost slim" data-act="load" ${S.loading ? 'disabled' : ''}>Sync now</button></div>`}
+        `<div class="row small"><span class="muted">${S.loading ? 'Reading…' : 'Updated ' + esc(synced)}</span><button class="btn ghost slim" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add statements</button></div>`}
       <div class="chips" role="tablist">${pc.map(([k, l]) => `<button class="chip ${S.period === k ? 'on' : ''}" data-act="period" data-v="${k}">${l}</button>`).join('')}</div>
       <div class="muted small">${esc(r.label)}<br>Bank to ${latestOf('santander') ? niceShort(latestOf('santander')) : '—'} · Amex to ${latestOf('amex') ? niceShort(latestOf('amex')) : '—'} · Tesco to ${latestOf('tesco') ? niceShort(latestOf('tesco')) : '—'}</div>
       <div class="kpis">
@@ -751,7 +743,7 @@
   function renderPay() {
     const el = $('#view-pay');
     const ps = S.payslips;
-    if (!ps.length) return emptyState(el, 'No payslips yet. Add your payslips folder in Statements.');
+    if (!ps.length) return emptyState(el, 'No payslips yet. Tick your payslips with Pick statements on the Statements tab.');
     if (S.payIdx === null || S.payIdx >= ps.length) S.payIdx = ps.length - 1;
     const p = ps[S.payIdx];
     const gross = p.grossBeforePension;
@@ -824,7 +816,7 @@
         <div class="kpi"><div class="label">ISA allowance left</div><div class="value">${isa.isaAllowanceLeft !== null && isa.isaAllowanceLeft !== undefined ? gbp0(isa.isaAllowanceLeft) : '—'}</div><div class="sub">per Moneyfarm, ${niceShort(isa.period.end)}</div></div>
         <div class="kpi"><div class="label">Paid in this tax year</div><div class="value">${gbp0(isaTyIn)}</div><div class="sub">from statements</div></div>
         <div class="kpi"><div class="label">Fees (all statements)</div><div class="value">${gbp0(-sum(S.isa, x => x.fees || 0))}</div><div class="sub">${S.isa.length} quarter${S.isa.length === 1 ? '' : 's'}</div></div>
-      </div>` : '<div class="card muted small">No Moneyfarm statements found. Add the folder they’re in.</div>'}
+      </div>` : '<div class="card muted small">No Moneyfarm statements yet. Tick them with Pick statements on the Statements tab.</div>'}
 
       <h2>Workplace pension</h2>
       ${pen ? `<div class="card">
@@ -833,7 +825,7 @@
         ${penSince.length ? `<div class="small" style="margin-top:8px">Since then your payslips show <b>${gbp(penSinceAmt)}</b> more paid in (${penSince.length} month${penSince.length === 1 ? '' : 's'}, you + employer). The value itself updates when the next annual statement arrives.</div>` : ''}
       </div>
       ${pen.projectedPot ? `<div class="kpis"><div class="kpi"><div class="label">Projected pot</div><div class="value">${gbp0(pen.projectedPot)}</div><div class="sub">at ${esc(pen.retirementDate || 'retirement')}, Aviva's example</div></div>
-        <div class="kpi"><div class="label">Example yearly income</div><div class="value">${gbp0(pen.projectedIncome)}</div><div class="sub">in today's money, not guaranteed</div></div></div>` : ''}` : '<div class="card muted small">No pension statement found. Add the folder it’s in.</div>'}
+        <div class="kpi"><div class="label">Example yearly income</div><div class="value">${gbp0(pen.projectedIncome)}</div><div class="sub">in today's money, not guaranteed</div></div></div>` : ''}` : '<div class="card muted small">No pension statement yet. Tick it with Pick statements on the Statements tab.</div>'}
 
       <h2>From the joint account this tax year</h2>
       <div class="card">${Object.keys(byDest).length ? `<ul class="list">${Object.entries(byDest).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<li><div class="who"><b>${esc(k)}</b></div><span class="num">${gbp(v)}</span></li>`).join('')}</ul><div class="muted small">Net of money taken back out. A negative figure means more came out than went in.</div>` : '<span class="muted small">No savings transfers found.</span>'}</div>`;
@@ -870,6 +862,11 @@
     const badge = c => ({ ok: '<span class="cell ok">✓</span>', chk: '<span class="cell chk">⚠</span>', miss: '<span class="cell miss">✗</span>', due: '<span class="cell na">·</span>' })[c];
     const groups = [['santander', 'Joint account (Santander)'], ['amex', 'Amex'], ['tesco', 'Tesco credit card'], ['payslip', 'Payslips'], ['moneyfarm', 'Moneyfarm ISA'], ['aviva', 'Pension']];
     el.innerHTML = `
+      <h2>Add statements</h2>
+      <div class="card stack">
+        <button class="btn" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add PDFs</button>
+        <p class="muted small" style="margin:0">Opens your phone's file chooser. Go to <b>Google Drive</b> (or Downloads), open a statements folder, then <b>⋮ → Select all</b> and tap <b>Select</b>. Choose the whole folder every time if you like: the app recognises statements it has already read and only reads new ones. Nothing is uploaded.</p>
+      </div>
       ${cov ? `<h2>Statement coverage</h2>
       <div class="card"><div class="grid"><span></span>${cov.months.map(m => `<span class="h">${MON[+m.slice(5) - 1]}</span>`).join('')}
         ${cov.rows.map(r => `<span>${esc(r.label)}</span>${r.cells.map(badge).join('')}`).join('')}</div>
@@ -878,22 +875,21 @@
       ${cov.missing.length || cov.gaps.length ? `<div class="card notice small">${cov.missing.length ? `<b>Missing:</b> ${cov.missing.map(esc).join(', ')}.` : ''}${cov.gaps.length ? `<br><b>Gap in bank statements:</b> ${cov.gaps.map(esc).join('; ')}.` : ''}</div>` : `<div class="card notice good small">Everything up to date.</div>`}
       ${repays.length ? `<h2>Card repayments from the joint account</h2><div class="card"><ul class="list">${repays.map(t => `<li class="tap" data-act="txn" data-v="${t.key}"><div class="who"><b>${/AMERICAN EXP|AMEX/i.test(t.desc) ? 'Amex' : 'Tesco'} · paid ${niceShort(t.date)}</b><span>${t.repayStatus === 'matched' ? 'matches the card statement balance' : t.repayStatus === 'covered' ? 'card statements loaded, no exact balance match' : 'no card statement yet: counted as spending'}</span></div><span class="${t.repayStatus === 'matched' ? 'in' : t.repayStatus === 'covered' ? 'muted' : 'out'}">${gbp(-t.amount)} ${t.repayStatus === 'matched' ? '✓' : '?'}</span></li>`).join('')}</ul></div>` : ''}` : ''}
 
-      <h2>Google Drive sources</h2>
-      <div class="card">
-        ${S.sources.length ? `<ul class="list">${S.sources.map((s, i) => { const subs = Object.entries(S.folders).filter(([, f]) => f.source === s.id && typeof f.include === 'boolean').sort((a, b) => a[1].path.localeCompare(b[1].path)); return `<li style="flex-wrap:wrap"><div class="who"><b>${s.type === 'folder' ? '📁' : '📄'} ${esc(s.name)}</b><span>${s.type === 'folder' ? (subs.length ? `${subs.filter(([, f]) => f.include).length} of ${subs.length} subfolders included` : 'Every PDF inside, and subfolders you choose') : 'Single file'}</span></div><button class="btn danger slim" data-act="unsource" data-v="${i}" aria-label="Remove">Remove</button>
-          ${subs.length ? `<div class="subfolders">${subs.map(([id, f]) => `<button class="chip ${f.include ? 'on' : ''}" data-act="folder-toggle" data-v="${esc(id)}" title="${esc(f.path)}">${f.include ? '✓ ' : ''}${esc(f.path.split(' › ').slice(1).join(' › '))}</button>`).join('')}<div class="muted small" style="width:100%">Tap a subfolder to include or exclude it. Excluded folders are never opened; their statements are dropped at the next sync.</div></div>` : ''}</li>`; }).join('')}</ul>` : '<p class="muted">Nothing picked yet.</p>'}
-        <div class="row" style="margin-top:10px;flex-wrap:wrap">
-          <button class="btn ghost" data-act="pick" ${ready ? '' : 'disabled'}>Add from Google Drive</button>
-          <button class="btn" data-act="load" ${ready && S.sources.length && !S.loading ? '' : 'disabled'}>Sync with Drive</button>
+      <h2>Or sync with Google Drive</h2>
+      <div class="card stack">
+        <div class="row" style="flex-wrap:wrap">
+          <button class="btn ghost" data-act="pick" ${ready ? '' : 'disabled'}>Pick statements</button>
+          <button class="btn ghost" data-act="load" ${ready && !S.loading ? '' : 'disabled'}>Sync with Drive</button>
         </div>
-        ${S.loading ? `<div class="progress" id="progress" style="margin-top:10px"><div style="width:${S.progress * 100}%"></div></div>` : ''}
-        ${!ready ? '<p class="muted small">Add your Google settings in Settings first.</p>' : ''}
-        <p class="muted small">Pick the folders that hold your bank statements, card statements, payslips and investment statements. Statements in subfolders are found too; the first time the app finds a subfolder it asks whether to include it. The app works out what each PDF is from what's inside it, not its file name. It can only see what you pick here: Google enforces this. <b>Sync</b> only downloads statements that are new or changed.</p>
+        ${S.loading ? `<div class="progress" id="progress"><div style="width:${S.progress * 100}%"></div></div>` : ''}
+        ${!ready ? '<p class="muted small" style="margin:0">Add your Google settings in Settings first.</p>' : ''}
+        <p class="muted small" style="margin:0"><b>Pick statements</b> opens Google Drive. Tick the statement PDFs (use the <b>All PDFs</b> tab to see the newest first). Google then lets this app open those files and nothing else in your Drive. Files you've ticked on any device, such as your laptop, are found here at the next <b>Sync</b>. Each month, tick the new statements and sync.</p>
+        ${S.ignored.length ? `<p class="muted small" style="margin:0">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app. <button class="btn ghost slim" data-act="unignore">Use them again</button></p>` : ''}
       </div>
 
       ${groups.map(([type, label]) => { const list = S.statements.filter(s => s.type === type).slice().reverse(); return list.length ? `<h2>${label} (${list.length})</h2>
-      <div class="card"><ul class="list">${list.map(s => `<li><div class="who"><b>${s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end))}</b><span>${esc(s.name)}${s.count ? ' · ' + s.count + ' transactions' : ''}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}</div><span class="${s.ok ? 'in' : 'out'}">${s.ok ? '✓' : '⚠'}</span></li>`).join('')}</ul></div>` : ''; }).join('')}
-      ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div></li>`).join('')}</ul></div>` : ''}
+      <div class="card"><ul class="list">${list.map(s => `<li><div class="who"><b>${s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end))}</b><span>${esc(s.name)}${s.count ? ' · ' + s.count + ' transactions' : ''}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}</div><span class="${s.ok ? 'in' : 'out'}">${s.ok ? '✓' : '⚠'}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`).join('')}</ul></div>` : ''; }).join('')}
+      ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div>${s.id ? `<button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button>` : ''}</li>`).join('')}</ul></div>` : ''}
       ${S.txns.length && !S.demo ? `<div class="card notice good small"><b>Saved on this phone, encrypted${S.meta && S.meta.mode === 'pin' ? ' and locked with your passcode' : ''}.</b> The statement PDFs themselves are never saved.</div>` : ''}`;
   }
 
@@ -946,7 +942,7 @@
         <div>• Statement PDFs are opened from Google Drive into this phone's memory, read, then discarded. The PDFs are never saved.</div>
         <div>• What's read from them is saved on this phone with AES-256 encryption, so the app opens straight away and only new statements are downloaded.</div>
         <div>• No server, no analytics, no AI. The only network calls go to Google, to fetch the files you picked.</div>
-        <div>• Also saved on this phone: the settings above, the folders you picked, your rules, saved reports, and category corrections (stored as one-way hashes).</div>
+        <div>• Also saved on this phone: the settings above, your rules, saved reports, and category corrections (stored as one-way hashes).</div>
         <div class="row"><button class="btn danger" data-act="sign-out">Sign out of Google</button><button class="btn danger" data-act="forget">Forget everything</button></div>
       </div>
       <p class="muted small" style="text-align:center">Household Ledger v2.0 · bank, cards, payslips, ISA and pension</p>`;
@@ -971,8 +967,15 @@
       switch (a.dataset.act) {
         case 'go-settings': return go('settings');
         case 'demo': return loadDemo();
+        case 'add-local': return chooseLocalFiles();
         case 'load': return syncDrive();
-        case 'pick': { const picked = await openPicker(); if (picked) { renderData(); toast('Added. Tap Sync with Drive.'); } return; }
+        case 'pick': { const n = await openPicker(); if (n) { toast(`${n} file${n === 1 ? '' : 's'} shared with the app. Syncing…`); return syncDrive(); } return; }
+        case 'ignore': {
+          if (!confirm('Stop using this file in the app? (It stays in your Google Drive.)')) return;
+          S.ignored = [...new Set(S.ignored.concat(v))]; store.set('ignored', S.ignored);
+          delete S.files[v]; await saveVault(); rebuild(); return render();
+        }
+        case 'unignore': S.ignored = []; store.set('ignored', S.ignored); renderData(); return toast('Tap Sync with Drive to read them again.');
         case 'unlock': {
           const pin = $('#pin').value; if (!pin) return;
           a.disabled = true;
@@ -985,8 +988,6 @@
         case 'erase-data':
           if (!confirm('Erase the saved statements from this phone? Your settings and rules are kept. The next sync reads every statement again.')) return;
           await idb.clear(); S.files = {}; S.key = null; S.meta = null; S.locked = false; S.lastSync = null; rebuild(); statusLine(); return go('home');
-        case 'unsource': { const gone = S.sources.splice(+v, 1)[0]; Object.keys(S.folders).forEach(id => { if (S.folders[id].source === gone.id) delete S.folders[id]; }); store.set('folders', S.folders); store.set('sources', S.sources); return renderData(); }
-        case 'folder-toggle': { const fo = S.folders[v]; if (!fo) return; fo.include = !fo.include; store.set('folders', S.folders); renderData(); return toast(fo.include ? 'Included. Tap Sync with Drive to read it.' : 'Excluded. Its statements are dropped at the next sync.'); }
         case 'period': S.period = v; return renderHome();
         case 'toggle-oneoffs': S.hideOneOffs = !S.hideOneOffs; store.set('hideOneOffs', S.hideOneOffs); return renderHome();
         case 'cat': { const r = rangeFor(S.period); S.filter = Object.assign(blankFilter(), { cats: [v], from: r.from, to: r.to, dir: 'both' }); return go('reports'); }
