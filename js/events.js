@@ -2,7 +2,7 @@
 import { loadDemo } from './demo.js';
 import { GROUP_OF } from './deps.js';
 import { renderHome } from './home.js';
-import { setRole } from './accounts.js';
+import { offerTransferRules, setRole } from './accounts.js';
 import { checkInbox, chooseLocalFiles } from './ingest.js';
 import { rangeFor, rebuild, recategorise } from './model.js';
 import { renderPay } from './pay.js';
@@ -50,6 +50,7 @@ export function bindEvents() {
           if (role === 'personal' && !S.accountList.some(a => a.id !== id && a.role === 'household')) return toast('You need at least one household account.');
           setRole(id, role); if (role === 'household' && S.scope === id) { S.scope = 'household'; store.set('scope', 'household'); } return render();
         }
+        case 'acc-find': { await offerTransferRules(v); return render(); }
         case 'scope': S.scope = v; store.set('scope', v); S.filter = blankFilter(); return render();
         case 'period': S.period = v; return renderHome();
         case 'toggle-oneoffs': S.hideOneOffs = !S.hideOneOffs; store.set('hideOneOffs', S.hideOneOffs); return renderHome();

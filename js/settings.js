@@ -24,7 +24,7 @@ export function renderSettings() {
     <div class="card stack">
       <p class="small muted" style="margin:0">Household accounts are merged into one household view. A personal account is kept apart and shown when you pick it at the top of the Dashboard and Reports. You need at least one household account. Changing this regroups what is already saved; nothing is read again.</p>
       <ul class="list">${S.accountList.map(a => `<li><div class="who"><b>${esc(accountName(a))}</b><span>${a.role ? (a.role === 'household' ? 'Household' : 'Personal') : 'Waiting for you to choose'}</span></div>
-        <div class="seg">${['household', 'personal'].map(r => `<button class="${a.role === r ? 'on' : ''}" data-act="acc-role" data-v="${esc(a.id)}|${r}">${r === 'household' ? 'Household' : 'Personal'}</button>`).join('')}</div></li>`).join('')}</ul>
+        <div class="seg">${['household', 'personal'].map(r => `<button class="${a.role === r ? 'on' : ''}" data-act="acc-role" data-v="${esc(a.id)}|${r}">${r === 'household' ? 'Household' : 'Personal'}</button>`).join('')}</div></li>${a.role === 'personal' ? `<li><span class="small muted">Find payments from the household account to this one and count them as personal spending.</span><button class="btn ghost slim" data-act="acc-find" data-v="${esc(a.id)}">Find transfers</button></li>` : ''}`).join('')}</ul>
     </div>` : ''}
 
     <h2>Your categorisation rules (${S.rules.length})</h2>
