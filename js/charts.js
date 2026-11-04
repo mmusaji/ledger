@@ -19,11 +19,14 @@ export function barChart(groups, la = 'Income', lb = 'Spending') { // [{label, a
   return s + '</svg>';
 }
 
-export function lineChart(pts, label) { // [{d, v}]
+export function lineChart(pts, label, range) { // [{d, v}]; with range {from, to} the horizontal axis is time, so the chart spans the chosen period
   if (pts.length < 2) return '';
   const W = 340, H = 110, padL = 46, padB = 16, padT = 6;
   const lo = Math.min(0, ...pts.map(p => p.v)), hi = Math.max(1, ...pts.map(p => p.v));
-  const x = i => padL + (i / Math.max(1, pts.length - 1)) * (W - padL - 4);
+  const day = d => Date.parse(d + 'T00:00:00Z') / 864e5;
+  const span = range ? Math.max(1, day(range.to) - day(range.from)) : 0;
+  const x = i => padL + (range ? (day(pts[i].d) - day(range.from)) / span : i / Math.max(1, pts.length - 1)) * (W - padL - 4);
+  const lab = d => (range && range.from.slice(0, 4) !== range.to.slice(0, 4) ? niceShort(d) + ' ' + d.slice(2, 4) : niceShort(d));
   const y = v => H - padB - ((v - lo) / (hi - lo || 1)) * (H - padB - padT);
   const path = pts.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.v).toFixed(1)).join(' ');
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">`;
@@ -31,7 +34,7 @@ export function lineChart(pts, label) { // [{d, v}]
   s += `<text x="${padL - 4}" y="${y(hi) + 3}" text-anchor="end">${gbp0(hi)}</text>`;
   if (lo < 0) s += `<rect x="${padL}" y="${y(0)}" width="${W - padL}" height="${y(lo) - y(0)}" fill="var(--out)" opacity=".08"/><text x="${padL - 4}" y="${y(lo) + 3}" text-anchor="end">${gbp0(lo)}</text>`;
   s += `<path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/>`;
-  s += `<text x="${padL}" y="${H - 3}">${niceShort(pts[0].d)}</text><text x="${W}" y="${H - 3}" text-anchor="end">${niceShort(pts[pts.length - 1].d)}</text>`;
+  s += `<text x="${padL}" y="${H - 3}">${lab(pts[0].d)}</text><text x="${W}" y="${H - 3}" text-anchor="end">${lab(pts[pts.length - 1].d)}</text>`;
   return s + '</svg>';
 }
 

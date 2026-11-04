@@ -21,7 +21,9 @@ export function renderHome() {
   const spendTx = tx.filter(isSpend);
   const spending = -sum(spendTx);
   const saved = -sum(tx.filter(t => t.group === 'saving'));
-  const series = balanceSeries(base.filter(isCurrent)).filter(p => p.date >= r.from && p.date <= r.to);
+  const fullSeries = balanceSeries(base.filter(isCurrent));
+  const series = fullSeries.filter(p => p.date >= r.from && p.date <= r.to);
+  const before = fullSeries.filter(p => p.date < r.from).pop(); // the balance carried into the period
   const potNet = -sum(tx.filter(t => t.pot));
   const lastMz = scopeStatements().filter(s => s.type === 'monzo').pop();
   const last = series.length ? { balance: series[series.length - 1].v, date: series[series.length - 1].date } : null;
@@ -95,7 +97,7 @@ export function renderHome() {
     ${low ? `<h2>Bank balance</h2><div class="card ${low.balance < 0 ? 'notice bad' : 'notice good'}">
       <div class="row"><b>Lowest</b><span class="num ${low.balance < 0 ? 'out' : ''}">${gbp(low.balance)}</span></div>
       <div class="muted small">${nice(low.date)}${low.balance < 0 ? ` · overdrawn on ${odDays} day${odDays === 1 ? '' : 's'}` : ' · never overdrawn in this period'}</div>
-      <div class="chart" style="margin-top:8px">${lineChart(series.map(p => ({ d: p.date, v: p.v })), 'Account balance')}</div></div>` : ''}
+      <div class="chart" style="margin-top:8px">${lineChart([...(before ? [{ d: r.from, v: before.v }] : []), ...series.map(p => ({ d: p.date, v: p.v })), { d: r.to, v: series[series.length - 1].v }], 'Account balance', { from: r.from, to: r.to })}</div></div>` : ''}
 
     ${reg.length ? `<h2>Direct debits &amp; standing orders</h2>
     <div class="card">
