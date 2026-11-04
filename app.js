@@ -308,6 +308,7 @@
   /** Bring the saved data up to date: only new or changed PDFs are downloaded and read. */
   async function syncDrive() {
     if (S.loading) return;
+    if (S.demo && S.meta) return toast('This is the sample-data demo. Open the app without ?demo to sync your statements.');
     S.loading = true; S.progress = 0; status('Checking Google Drive…'); render();
     let added = 0, changed = 0, removed = 0, failed = 0; const notes = [];
     try {
@@ -357,6 +358,7 @@
   async function addLocalFiles(list) {
     const fileList = [...list].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
     if (!fileList.length) return toast('No PDFs chosen.');
+    if (S.demo && S.meta) return toast('This is the sample-data demo, so your own statements are not touched. Open the app without ?demo to add statements.');
     if (S.loading) return;
     S.loading = true; S.progress = 0; render();
     let added = 0, known = 0, skippedIgnored = 0; const notes = [];
@@ -436,13 +438,13 @@
       const opening = bal;
       const btx = rows.map(([n, desc, amount]) => { bal += amount; return { date: d(n), desc, amount, balance: bal, kind: P.kindOf(desc), payee: P.payeeOf(desc), account: 'Joint account', holder: 'Joint', type: 'bank' }; });
       add({ type: 'santander', institution: 'Santander', name: `Sample bank ${MON[e.getUTCMonth()]}`, period: { start: isoOf(s), end: isoOf(e) }, opening, closing: bal, txns: btx, ok: true, problems: [] });
-      const merch = [['CO-OP - GROBY SAMPLETOWN', 'Fizza', 900, 4500], ['TESCO STORE 1234 SAMPLETOWN', 'Fizza', 2000, 9000], ['DELIVEROO LONDON', 'Mustafa', 1800, 4500], ['AMAZON.CO.UK*ABC', 'Fizza', 800, 6000],
-        ['AMAZON.CO.UK*XYZ', 'Mustafa', 1200, 9000], ['SHELL SAMPLE', 'Mustafa', 6000, 9500], ['ODEON SAMPLETOWN', 'Fizza', 1800, 4800], ['PRIMARK SAMPLETOWN', 'Fizza', 1500, 4000], ['CHAIIWALA SAMPLE', 'Mustafa', 700, 2500]];
+      const merch = [['CO-OP - GROBY SAMPLETOWN', 'Person B', 900, 4500], ['TESCO STORE 1234 SAMPLETOWN', 'Person B', 2000, 9000], ['DELIVEROO LONDON', 'Person A', 1800, 4500], ['AMAZON.CO.UK*ABC', 'Person B', 800, 6000],
+        ['AMAZON.CO.UK*XYZ', 'Person A', 1200, 9000], ['SHELL SAMPLE', 'Person A', 6000, 9500], ['ODEON SAMPLETOWN', 'Person B', 1800, 4800], ['PRIMARK SAMPLETOWN', 'Person B', 1500, 4000], ['CHAIIWALA SAMPLE', 'Person A', 700, 2500]];
       const ce = new Date(Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), 19)); const cs = new Date(Date.UTC(e.getUTCFullYear(), e.getUTCMonth() - 1, 20));
       const ctx = []; for (let i = 0; i < 26; i++) { const m = merch[rnd(0, merch.length - 1)]; const dd = isoOf(new Date(cs.getTime() + rnd(0, 29) * 864e5)); ctx.push({ date: dd, desc: m[0], amount: -rnd(m[2], m[3]), holder: m[1], account: 'Amex · ' + m[1], kind: 'Card purchase', type: 'card', payee: RD.cleanMerchant(m[0]) }); }
-      add({ type: 'amex', institution: 'Amex', name: `Sample Amex ${MON[ce.getUTCMonth()]}`, period: { start: isoOf(cs), end: isoOf(ce) }, summary: { closing: -sum(ctx) }, txns: ctx, holders: ['Mustafa', 'Fizza'], ok: true, problems: [] });
-      const ttx = []; for (let i = 0; i < 18; i++) { const m = merch[rnd(0, merch.length - 1)]; const dd = isoOf(new Date(cs.getTime() + (5 + rnd(0, 29)) * 864e5)); ttx.push({ date: dd, desc: m[0], amount: -rnd(m[2], m[3]), holder: 'Mustafa', account: 'Tesco · Mustafa', kind: 'Card purchase', type: 'card', payee: RD.cleanMerchant(m[0]) }); }
-      add({ type: 'tesco', institution: 'Tesco', name: `Sample Tesco ${MON[ce.getUTCMonth()]}`, period: { start: addDays(isoOf(cs), 5), end: addDays(isoOf(ce), 5) }, summary: { closing: -sum(ttx) }, txns: ttx, holders: ['Mustafa'], ok: true, problems: [] });
+      add({ type: 'amex', institution: 'Amex', name: `Sample Amex ${MON[ce.getUTCMonth()]}`, period: { start: isoOf(cs), end: isoOf(ce) }, summary: { closing: -sum(ctx) }, txns: ctx, holders: ['Person A', 'Person B'], ok: true, problems: [] });
+      const ttx = []; for (let i = 0; i < 18; i++) { const m = merch[rnd(0, merch.length - 1)]; const dd = isoOf(new Date(cs.getTime() + (5 + rnd(0, 29)) * 864e5)); ttx.push({ date: dd, desc: m[0], amount: -rnd(m[2], m[3]), holder: 'Person A', account: 'Tesco · Person A', kind: 'Card purchase', type: 'card', payee: RD.cleanMerchant(m[0]) }); }
+      add({ type: 'tesco', institution: 'Tesco', name: `Sample Tesco ${MON[ce.getUTCMonth()]}`, period: { start: addDays(isoOf(cs), 5), end: addDays(isoOf(ce), 5) }, summary: { closing: -sum(ttx) }, txns: ttx, holders: ['Person A'], ok: true, problems: [] });
       const pd = d(19); const variable = rnd(0, 1) ? rnd(300000, 700000) : 0; const gross = 1000000 + 55000 + variable;
       const tax = Math.round((gross - 200000) * 0.38), ni = Math.round((gross - 200000) * 0.03), espp = Math.round((1000000 + variable) * 0.03);
       add({ type: 'payslip', institution: 'Acme UK Ltd', name: `Sample payslip ${MON[s.getUTCMonth()]}`, period: { start: pd, end: pd }, payDate: pd, employer: 'Acme UK Ltd', basic: 1000000, car: 55000, variable,
@@ -531,7 +533,19 @@
       <div class="hd"><span>${esc(r.k)}</span><span class="num">${gbp(r.v)}${total ? ` <span class="muted small">${Math.round(r.v / total * 100)}%</span>` : ''}</span></div>
       <div class="track"><div class="fill ${r.cls || ''}" style="width:${Math.max(0, r.v / max * 100).toFixed(1)}%"></div></div></div>`).join('')}</div>`;
   }
-  const PERSON_CLS = { Mustafa: 'k1', Fizza: 'k3', 'Joint account': 'k4' };
+  // Every person gets their own colour, picked automatically from the names found on the statements
+  // (alphabetical order, so a person keeps the same colour from month to month). The bank account is always purple.
+  const PERSON_COLOURS = ['k1', 'k3', 'k5', 'k6', 'k7', 'k8', 'k2'];
+  let _colourFor = null, _colourMap = {};
+  function personCls(name) {
+    if (name === 'Joint account' || name === 'Joint') return 'k4';
+    if (_colourFor !== S.txns) {
+      _colourFor = S.txns; _colourMap = {};
+      [...new Set(S.txns.map(t => t.holder).filter(h => h && h !== 'Joint' && h !== 'Joint account' && h !== 'Account'))].sort()
+        .forEach((h, i) => { _colourMap[h] = PERSON_COLOURS[i % PERSON_COLOURS.length]; });
+    }
+    return _colourMap[name] || 'k2';
+  }
 
   // ---------- Dashboard ----------
   function renderHome() {
@@ -598,7 +612,7 @@
       <h2>Who spent what</h2>
       <div class="card">${people.map(([p, v]) => `
         <div class="person"><div class="row"><b>${esc(p)}</b><b class="num">${gbp(v.total)}</b></div>
-        <div class="stackbar"><i class="${PERSON_CLS[p] || 'k2'}" style="width:${(v.total / maxP * 100).toFixed(1)}%"></i></div>
+        <div class="stackbar"><i class="${personCls(p)}" style="width:${(v.total / maxP * 100).toFixed(1)}%"></i></div>
         <div class="muted small">${Object.entries(v.acc).sort((a, b) => b[1] - a[1]).map(([a, x]) => `${esc(a === 'Joint account' ? 'Bank' : a.split(' · ')[0])} ${gbp(x)}`).join(' · ')}</div></div>`).join('')}
       </div>
 
@@ -964,7 +978,7 @@
         <div>• Also saved on this phone: the settings above, your rules, saved reports, and category corrections (stored as one-way hashes).</div>
         <div class="row">${c.clientId ? '<button class="btn danger" data-act="sign-out">Sign out of Google</button>' : '<span></span>'}<button class="btn danger" data-act="forget">Forget everything</button></div>
       </div>
-      <p class="muted small" style="text-align:center">Household Ledger v2.2 · bank, cards, payslips, ISA and pension</p>`;
+      <p class="muted small" style="text-align:center">Household Ledger v2.3 · bank, cards, payslips, ISA and pension</p>`;
     let dir = '';
     $('#r-dir').addEventListener('click', e => { if (e.target.dataset.v === undefined) return; dir = e.target.dataset.v; [...$('#r-dir').children].forEach(b => b.classList.toggle('on', b === e.target)); });
     $('[data-act="add-rule"]').addEventListener('click', () => {
@@ -1062,7 +1076,7 @@
       let reloaded = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded && !S.loading) { reloaded = true; location.reload(); } });
     }
-    if (new URLSearchParams(location.search).has('demo')) return loadDemo();
+    if (new URLSearchParams(location.search).has('demo')) { try { S.meta = await idb.get('meta') || null; } catch { } return loadDemo(); }
     try {
       S.meta = await idb.get('meta') || null;
       if (S.meta && S.meta.mode === 'device') await openVault(S.meta.key);

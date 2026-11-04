@@ -114,9 +114,9 @@ body.locked .tabs { display: none; }
 .stackbar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin-top: 6px; background: var(--track); }
 .stackbar.tall { height: 14px; margin-top: 12px; }
 .stackbar i { display: block; height: 100%; }
-.k1 { background: var(--bar1); } .k2 { background: var(--bar2); } .k3 { background: #6b8fb3; } .k4 { background: #8a7fb0; } .kr { background: var(--out); }
+.k1 { background: var(--bar1); } .k2 { background: var(--bar2); } .k3 { background: #6b8fb3; } .k4 { background: #8a7fb0; } .k5 { background: #c9a24a; } .k6 { background: #c06c84; } .k7 { background: #4aa3b5; } .k8 { background: #7a8794; } .kr { background: var(--out); }
 .legend { flex-wrap: wrap; }
-.legend i.k1, .legend i.k2, .legend i.k3, .legend i.k4, .legend i.kr { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.legend i.k1, .legend i.k2, .legend i.k3, .legend i.k4, .legend i.k5, .legend i.k6, .legend i.k7, .legend i.k8, .legend i.kr { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .person + .person { margin-top: 14px; }
 .person .muted { margin-top: 4px; }
 .grid { display: grid; grid-template-columns: 76px repeat(6, minmax(0, 1fr)); gap: 4px; font-size: 12px; align-items: center; }
