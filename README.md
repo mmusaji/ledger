@@ -73,6 +73,23 @@ You don't need GitHub to use the app. If you want your own copy, with updates on
 1. Fork this repository (or download it and create your own public repository), then in **Settings → Pages** choose **Deploy from a branch → main / (root)**.
 2. After a minute it's live at `https://YOUR-USERNAME.github.io/REPOSITORY-NAME/`. Install it from there.
 
+## How the code is organised
+
+Plain JavaScript, no build step and no dependencies other than the bundled PDF.js. Open `index.html` through any static web server to run it.
+
+| File | What it does |
+|---|---|
+| `index.html`, `app.css` | The page and its styles |
+| `parser.js`, `readers.js` | Read the text out of each kind of statement and check the totals |
+| `rules.js` | Spending categories and the built-in categorisation rules |
+| `js/main.js` | Start-up |
+| `js/state.js`, `js/model.js`, `js/period.js` | The shared state, transactions and categories, pay months |
+| `js/vault.js` | Encrypted saved data, passcode, locking |
+| `js/ingest.js`, `js/demo.js` | Adding statements (file chooser and Share), sample data |
+| `js/home.js`, `reports.js`, `pay.js`, `savings.js`, `statements.js`, `settings.js`, `txn.js` | One file per screen |
+| `js/ui.js`, `charts.js`, `util.js`, `deps.js`, `events.js` | Shared screen plumbing, helpers and click handling |
+| `sw.js` | Lets the app open offline and pick up updates |
+
 ## Licence
 
 Free for personal and other **non-commercial** use, including trying it, studying it and changing it for yourself, under the [PolyForm Noncommercial License 1.0.0](LICENSE). Commercial use, such as offering it to customers or building it into a paid product, isn't allowed without the owner's written permission. PDF.js, used to read PDFs, is separately licensed. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
