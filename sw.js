@@ -1,5 +1,5 @@
 // Caches only the app's own files so it opens quickly. Never touches anything outside the app's own files.
-const CACHE = 'ledger-v14';
+const CACHE = 'ledger-v15';
 const SHELL = ['./', 'index.html', 'app.css', 'app.js', 'parser.js', 'readers.js', 'rules.js', 'vendor/pdf.min.js', 'vendor/pdf.worker.min.js', 'icon.svg', 'manifest.webmanifest'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));

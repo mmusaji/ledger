@@ -36,22 +36,30 @@
   const personOf = acc => (acc && acc.includes(' · ')) ? acc.split(' · ')[1] : 'Joint account';
   const ONE_OFF = 50000; // £500
 
-  // Pay cycle: the 6th of one month to the 5th of the next (salary lands around the 25th).
-  function cycleOf(iso) {
-    let y = +iso.slice(0, 4), m = +iso.slice(5, 7), d = +iso.slice(8, 10);
-    if (d < 6) { m -= 1; if (m === 0) { m = 12; y -= 1; } }
-    const start = `${y}-${pad(m)}-06`;
-    const e = new Date(Date.UTC(y, m, 5));
-    return { key: `${y}-${pad(m)}`, start, end: isoOf(e) };
-  }
-  const cycleLabel = key => monthLabel(key);
-  const cycleShort = key => MON[+key.slice(5) - 1];
-
   const store = {
     get(k, d) { try { const v = localStorage.getItem('ledger.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem('ledger.' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
     clear() { try { Object.keys(localStorage).filter(k => k.startsWith('ledger.')).forEach(k => localStorage.removeItem(k)); } catch { } }
   };
+
+  // Pay cycle: monthly, from payDay of one month to the day before payDay of the next.
+  // Default 6 = 6th→5th (salary around the 25th). UK tax year (6 Apr) is separate.
+  const DEFAULT_PAY_DAY = 6;
+  function payDay() {
+    const d = +store.get('payDay', DEFAULT_PAY_DAY);
+    return (Number.isInteger(d) && d >= 1 && d <= 28) ? d : DEFAULT_PAY_DAY;
+  }
+  function cycleOf(iso) {
+    const D = payDay();
+    let y = +iso.slice(0, 4), m = +iso.slice(5, 7), d = +iso.slice(8, 10);
+    if (d < D) { m -= 1; if (m === 0) { m = 12; y -= 1; } }
+    const start = `${y}-${pad(m)}-${pad(D)}`;
+    const e = new Date(Date.UTC(y, m, D - 1)); // month index m = calendar month after start
+    return { key: `${y}-${pad(m)}`, start, end: isoOf(e) };
+  }
+  function cycleFromKey(key) { return cycleOf(`${key}-${pad(payDay())}`); }
+  const cycleLabel = key => monthLabel(key);
+  const cycleShort = key => MON[+key.slice(5) - 1];
   // FNV-1a: corrections are stored against a hash, so no amounts or descriptions are written in clear.
   function hash(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36); }
   const baseKey = t => hash(`${t.date}|${t.amount}|${t.balance ?? ''}|${t.desc}|${t.account || ''}`);
@@ -144,16 +152,17 @@
   function cycles() { return [...new Set(S.txns.filter(t => t.type === 'bank').map(t => t.cycle))].sort(); }
   function rangeFor(p) {
     const cs = cycles(); if (!cs.length) return null;
-    const lastKey = cs[cs.length - 1]; const last = cycleOf(lastKey + '-06');
+    const lastKey = cs[cs.length - 1]; const last = cycleFromKey(lastKey);
     if (p === 'latest') return { from: last.start, to: last.end, keys: [lastKey], label: `Pay month ${cycleLabel(lastKey)} · ${niceShort(last.start)} – ${niceShort(last.end)}` };
-    if (p === 'all') return { from: cycleOf(cs[0] + '-06').start, to: last.end, keys: cs, label: `All ${cs.length} pay months` };
+    if (p === 'all') return { from: cycleFromKey(cs[0]).start, to: last.end, keys: cs, label: `All ${cs.length} pay months` };
     if (p === 'tax') {
+      // UK tax year always starts 6 April; independent of pay-cycle start day.
       const y = +last.end.slice(0, 4); const sy = last.end.slice(5) >= '04-06' ? y : y - 1;
-      const keys = cs.filter(k => cycleOf(k + '-06').start >= `${sy}-04-06`);
+      const keys = cs.filter(k => cycleFromKey(k).start >= `${sy}-04-06`);
       return { from: `${sy}-04-06`, to: last.end, keys, label: `Tax year ${sy}/${String(sy + 1).slice(2)} so far` };
     }
     const keys = cs.slice(-(+p));
-    return { from: cycleOf(keys[0] + '-06').start, to: last.end, keys, label: `Last ${keys.length} pay month${keys.length > 1 ? 's' : ''} · ${cycleLabel(keys[0])} – ${cycleLabel(lastKey)}` };
+    return { from: cycleFromKey(keys[0]).start, to: last.end, keys, label: `Last ${keys.length} pay month${keys.length > 1 ? 's' : ''} · ${cycleLabel(keys[0])} – ${cycleLabel(lastKey)}` };
   }
   const inRange = (t, r) => t.date >= r.from && t.date <= r.to;
 
@@ -794,7 +803,18 @@
   // ---------- Settings ----------
   function renderSettings() {
     const el = $('#view-settings');
+    const D = payDay();
+    const eg = cycleOf(today());
     el.innerHTML = `
+      <h2>Pay month</h2>
+      <div class="card stack">
+        <p class="small muted" style="margin:0">Dashboard and reports group money into monthly pay cycles. Default is the <b>6th</b> (6th of one month to the 5th of the next). Only monthly cycles are supported.</p>
+        <label class="field">Cycle starts on day
+          <select id="pay-day">${Array.from({ length: 28 }, (_, i) => i + 1).map(d => `<option value="${d}" ${d === D ? 'selected' : ''}>${ordinal(d)}</option>`).join('')}</select>
+        </label>
+        <div class="small muted">Current cycle example: <b>${niceShort(eg.start)} – ${niceShort(eg.end)}</b> (${cycleLabel(eg.key)}). Changing this re-groups existing transactions; it does not re-read PDFs.</div>
+      </div>
+
       <h2>Your categorisation rules (${S.rules.length})</h2>
       <div class="card stack">
         <p class="small muted" style="margin:0">If a transaction's description contains the text, it gets that category. Your rules run before the built-in ones. Tip: tap any transaction to fix its category, and a rule is added for you.</p>
@@ -834,7 +854,7 @@
         <div>• Also saved on this phone: the settings above, your rules, saved reports, and category corrections (stored as one-way hashes).</div>
         <div class="row"><span></span><button class="btn danger" data-act="forget">Forget everything</button></div>
       </div>
-      <p class="muted small" style="text-align:center">Household Ledger v2.3 · bank, cards, payslips, ISA and pension</p>`;
+      <p class="muted small" style="text-align:center">Household Ledger v2.4 · bank, cards, payslips, ISA and pension</p>`;
     let dir = '';
     $('#r-dir').addEventListener('click', e => { if (e.target.dataset.v === undefined) return; dir = e.target.dataset.v; [...$('#r-dir').children].forEach(b => b.classList.toggle('on', b === e.target)); });
     $('[data-act="add-rule"]').addEventListener('click', () => {
@@ -843,6 +863,14 @@
     });
     $('#r-file').addEventListener('change', async e => { const f = e.target.files[0]; if (f) $('#r-json').value = await f.text(); });
     $('#theme').addEventListener('click', e => { const v = e.target.dataset.v; if (!v) return; store.set('theme', v); applyTheme(); renderSettings(); });
+    $('#pay-day').addEventListener('change', e => {
+      const d = +e.target.value;
+      if (!(d >= 1 && d <= 28)) return;
+      store.set('payDay', d);
+      rebuild();
+      renderSettings();
+      toast(`Pay month now starts on the ${ordinal(d)}`);
+    });
   }
   function applyTheme() { const t = store.get('theme', 'auto'); if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t; }
 

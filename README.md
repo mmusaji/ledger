@@ -4,7 +4,7 @@ A private app for your phone that reads your own statement PDFs and turns them i
 
 **Your statements never leave your device.** There is no server, no account, no analytics and no AI, and no sign-in to Google or anyone else. The app reads each PDF on your phone, keeps only the transactions it finds (encrypted with a passcode you choose), and throws the PDF away.
 
-> **Please read before you rely on it.** This is a hobby project shared as-is, with no support and no warranty. It only understands the statement layouts listed below. When it can't make a statement add up, it shows a ⚠ rather than guessing, but always treat the numbers as a helpful summary, not as your official records.
+> **Please read before you rely on it.** This is a hobby project shared as-is, with no support and no warranty. It only understands the statement layouts listed below, and it has only been tested in Chrome on Android (not on iPhones or tablets). When it can't make a statement add up, it shows a ⚠ rather than guessing, but always treat the numbers as a helpful summary, not as your official records.
 
 ## What it reads
 
@@ -37,7 +37,7 @@ Anything else is skipped with a message ("Not a statement this app reads"), and 
 
 Each month, just add the new statements. Choosing the whole folder is fine, because statements already read are recognised and skipped.
 
-Tested on Android Chrome and desktop Chrome. iPhone and other browsers are untested. The Share route is Android-only.
+**Where it's been tested:** only in **Chrome**, mainly on an **Android phone**. It has **not** been tested on iPhones, iPads or tablets, or in other browsers such as Safari, Firefox or Edge. It may work there, but don't assume it does. The Share route is Android-only.
 
 ## Privacy and security
 
