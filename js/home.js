@@ -57,6 +57,7 @@ export function renderHome() {
       `<div class="row small"><span class="muted">${S.loading ? 'Reading…' : 'Updated ' + esc(synced)}</span><button class="btn ghost slim" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add statements</button></div>`}
     <div class="chips" role="tablist">${pc.map(([k, l]) => `<button class="chip ${S.period === k ? 'on' : ''}" data-act="period" data-v="${k}">${l}</button>`).join('')}</div>
     <div class="muted small">${esc(r.label)}<br>Bank to ${latestOf('santander') ? niceShort(latestOf('santander')) : '—'} · Amex to ${latestOf('amex') ? niceShort(latestOf('amex')) : '—'} · Tesco to ${latestOf('tesco') ? niceShort(latestOf('tesco')) : '—'}</div>
+    ${(r.part || []).map(x => `<div class="card notice small">The pay month starting ${esc(nice(x.start))} is only part covered by your bank statements (${esc(niceShort(x.from))} – ${esc(niceShort(x.to))}), so it is left out of the totals until the rest is added.</div>`).join('')}
     <div class="kpis">
       <div class="kpi"><div class="label">Income</div><div class="value in">${gbp0(income)}</div><div class="sub">salary, shares, contributions</div></div>
       <div class="kpi"><div class="label">Spending</div><div class="value out">${gbp0(spending)}</div><div class="sub">bank + all cards${S.hideOneOffs ? ', no one-offs' : ''}</div></div>

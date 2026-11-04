@@ -17,7 +17,7 @@ export function renderSettings() {
       <label class="field">Cycle starts on day
         <select id="pay-day">${Array.from({ length: 28 }, (_, i) => i + 1).map(d => `<option value="${d}" ${d === D ? 'selected' : ''}>${ordinal(d)}</option>`).join('')}</select>
       </label>
-      <div class="small muted">Current cycle example: <b>${niceShort(eg.start)} – ${niceShort(eg.end)}</b> (${cycleLabel(eg.key)}). Changing this re-groups existing transactions; it does not re-read PDFs.</div>
+      <div class="small muted">Current cycle example: <b>${niceShort(eg.start)} – ${niceShort(eg.end)}</b> (${cycleLabel(eg.key)}). Changing this re-groups existing transactions; it does not re-read PDFs. Bank statements run 6th to 5th, so if your pay month starts on another day, the first and last pay month are only part covered. The dashboard leaves those out and says so, until the rest of the statements are added.</div>
     </div>
 
     <h2>Your categorisation rules (${S.rules.length})</h2>

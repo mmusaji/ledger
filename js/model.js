@@ -76,9 +76,36 @@ export const oneOff = t => isSpend(t) && -t.amount >= ONE_OFF;
 
 function cycles() { return [...new Set(S.txns.filter(t => t.type === 'bank').map(t => t.cycle))].sort(); }
 
+/** Pay months the bank statements cover from start to finish. If your pay month starts on a different day to the
+ *  statements (say the 26th, with statements running 6th to 5th), the first and last pay month are only part covered:
+ *  they would show a few days of spending and no salary. Those are left out of the totals and reported in `part`
+ *  so the screen can say so. A few days of slack keeps statements that are a day or two out of step with the pay
+ *  month counting as covered. */
+function coveredCycles() {
+  const all = cycles();
+  const bank = S.statements.filter(s => s.type === 'santander');
+  if (!all.length || !bank.length) return { keys: all, part: [] };
+  const first = bank.map(s => s.period.start).sort()[0];
+  const last = bank.map(s => s.period.end).sort().pop();
+  const SLACK = 3;
+  const keys = [], part = [];
+  all.forEach(k => {
+    const c = cycleFromKey(k);
+    if (daysBetween(first, c.start) >= -SLACK && daysBetween(c.end, last) >= -SLACK) keys.push(k);
+    else part.push({ key: k, from: c.start > first ? c.start : first, to: c.end < last ? c.end : last, start: c.start, end: c.end });
+  });
+  return keys.length ? { keys, part } : { keys: all, part: [] }; // never hide everything
+}
+
 export function rangeFor(p) {
-  const cs = cycles(); if (!cs.length) return null;
+  const { keys: cs, part } = coveredCycles(); if (!cs.length) return null;
   const lastKey = cs[cs.length - 1]; const last = cycleFromKey(lastKey);
+  const r = rangeForCycles(p, cs, lastKey, last);
+  if (r) r.part = part;
+  return r;
+}
+
+function rangeForCycles(p, cs, lastKey, last) {
   if (p === 'latest') return { from: last.start, to: last.end, keys: [lastKey], label: `Pay month ${cycleLabel(lastKey)} · ${niceShort(last.start)} – ${niceShort(last.end)}` };
   if (p === 'all') return { from: cycleFromKey(cs[0]).start, to: last.end, keys: cs, label: `All ${cs.length} pay months` };
   if (p === 'tax') {

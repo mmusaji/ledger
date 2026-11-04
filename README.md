@@ -21,7 +21,7 @@ Anything else is skipped with a message ("Not a statement this app reads"), and 
 
 ## What you get
 
-- **Dashboard** by pay month (start day adjustable in **Settings**, default 6th): income, spending, left over, one-off payments (with a switch to hide them), who spent what, spending by category, bank balance, direct debits and top payees.
+- **Dashboard** by pay month (start day adjustable in **Settings**, default 6th; a pay month the statements only partly cover is left out and flagged): income, spending, left over, one-off payments (with a switch to hide them), who spent what, spending by category, bank balance, direct debits and top payees.
 - **Reports:** search and filter by text, account or card, dates, in or out, category, payment type and amount, with totals. Save your favourite reports.
 - **Pay:** each payslip from gross to net, pension, tax-year totals.
 - **Savings:** ISA value and allowance, pension value, savings transfers.
