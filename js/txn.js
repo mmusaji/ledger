@@ -16,7 +16,7 @@ export function openTxn(key) {
     <div class="muted small">${nice(t.date)} · ${esc(t.kind)} · ${esc(t.account)}${t.balance !== null ? ' · balance after ' + gbp(t.balance) : ''}${t.foreign ? ` · ${esc(t.foreign)} ${esc((t.currency || '').toLowerCase())}` : ''}</div>
     <div class="desc">${esc(t.desc)}${t.detail ? '<br>' + esc(t.detail) : ''}</div>
     ${repay ? `<div class="small muted">${repay}</div>` : ''}
-    <label class="field">Category<select id="s-cat">${CATEGORIES.map(c => `<option ${c.name === t.category ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+    <label class="field">Category<select id="s-cat">${CATEGORIES.some(c => c.name === t.category) ? '' : `<option selected>${esc(t.category)}</option>`}${CATEGORIES.map(c => `<option ${c.name === t.category ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
     <label class="small" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="s-all" checked style="margin-top:3px">
       <span>Use this category for every ${t.amount < 0 ? 'payment to' : 'payment from'} <b>${esc(t.payee)}</b> (saves a rule on this phone)</span></label>
     <div class="muted small">Currently set by: ${esc(t.catBy)}${t.catRule ? ` (“${esc(t.catRule)}”)` : ''} · from ${esc(t.source)}</div>
