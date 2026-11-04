@@ -13,7 +13,7 @@ A private app for your phone that reads your own statement PDFs and turns them i
 | **Santander** current / joint account statements | UK format. Every line is checked against the running balance printed on the statement. |
 | **Amex** card statements | Split by cardholder. |
 | **Tesco Bank / Clubcard** credit card statements | |
-| **Payslips** | Red Hat / ePay layout only. |
+| **Payslips** | ePay layout only. |
 | **Moneyfarm** ISA quarterly statements | |
 | **Aviva** workplace pension annual statements | |
 
