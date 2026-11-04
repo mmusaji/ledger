@@ -2,7 +2,7 @@
 
 A private app for your phone that reads your own statement PDFs and turns them into a dashboard and searchable reports. It was built as a personal tool and is shared with a few people by invitation. Please don't pass the link on without asking.
 
-**Your statements never leave your device.** There is no server, no account, no analytics and no AI. The app reads each PDF on your phone, keeps only the transactions it finds (encrypted with a passcode you choose), and throws the PDF away.
+**Your statements never leave your device.** There is no server, no account, no analytics and no AI, and no sign-in to Google or anyone else. The app reads each PDF on your phone, keeps only the transactions it finds (encrypted with a passcode you choose), and throws the PDF away.
 
 > **Please read before you rely on it.** This is a hobby project shared as-is, with no support and no warranty. It only understands the statement layouts listed below. When it can't make a statement add up, it shows a ⚠ rather than guessing, but always treat the numbers as a helpful summary, not as your official records.
 
@@ -72,10 +72,6 @@ You don't need GitHub to use the app. If you want your own copy, with updates on
 
 1. Fork this repository (or download it and create your own public repository), then in **Settings → Pages** choose **Deploy from a branch → main / (root)**.
 2. After a minute it's live at `https://YOUR-USERNAME.github.io/REPOSITORY-NAME/`. Install it from there.
-
-## Optional: Google Drive sync (advanced, not needed)
-
-The app can fetch statements from Google Drive itself, using your own Google Cloud project (OAuth client with the `drive.file` scope and a restricted Picker API key, entered under **Settings → Optional: Google Drive sync**). Because of Google's rules you still tick each file individually, so **Add PDFs** is easier. Nobody needs this.
 
 ## Licence
 

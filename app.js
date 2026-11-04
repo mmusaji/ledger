@@ -1,9 +1,9 @@
-/* Household Ledger v2 — reads the statement PDFs you tick in Google Drive,
- * entirely on this phone. Nothing is sent anywhere except Google (to fetch the files you chose).
+/* Household Ledger v2 — reads the statement PDFs you choose with your phone's own file chooser
+ * (or send with Share), entirely on this phone. Nothing is sent anywhere.
  * Statement PDFs are read in memory and never saved. What is read from them is saved on this
  * phone in IndexedDB, encrypted with AES-GCM (key from your passcode via PBKDF2), so the app
- * opens instantly and each sync only downloads statements that are new or have changed.
- * Also saved on this phone: Google settings, files you removed from the app, your rules,
+ * opens instantly and only statements that are new are read.
+ * Also saved on this phone: files you removed from the app, your rules,
  * category corrections (stored as hashes) and saved report filters.
  */
 (function () {
@@ -59,16 +59,12 @@
 
   // ---------- state ----------
   const S = {
-    config: store.get('config', { clientId: '', apiKey: '', projectNumber: '' }),
-    sources: store.get('sources', []),
     rules: store.get('rules', []),
     overrides: store.get('overrides', {}),
     presets: store.get('presets', []),
     hideOneOffs: store.get('hideOneOffs', false),
-    token: null, tokenExp: 0,
     statements: [], skipped: [], txns: [], payslips: [], isa: [], pension: [],
-    ignored: store.get('ignored', []), // files you removed from the app; Google may still list them
-    lastParent: store.get('lastParent', ''),
+    ignored: store.get('ignored', []), // files you removed from the app (left out even if you select the whole folder again)
     files: {}, lastSync: null, key: null, meta: null, locked: false, hiddenAt: 0, sheetLocked: false,
     demo: false, loading: false, progress: 0,
     view: 'home', period: 'latest', payIdx: null,
@@ -161,74 +157,6 @@
   }
   const inRange = (t, r) => t.date >= r.from && t.date <= r.to;
 
-  // ---------- Google Drive (only the files/folders you pick) ----------
-  const SCOPE = 'https://www.googleapis.com/auth/drive.file';
-  const scripts = {};
-  function loadScript(src) {
-    if (!scripts[src]) scripts[src] = new Promise((res, rej) => {
-      const s = document.createElement('script'); s.src = src; s.async = true; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.appendChild(s);
-    });
-    return scripts[src];
-  }
-  async function getToken() {
-    if (S.token && Date.now() < S.tokenExp - 60e3) return S.token;
-    if (!S.config.clientId) throw new Error('Add your Google Client ID in Settings first.');
-    await loadScript('https://accounts.google.com/gsi/client');
-    return new Promise((res, rej) => {
-      const tc = google.accounts.oauth2.initTokenClient({
-        client_id: S.config.clientId, scope: SCOPE,
-        callback: r => {
-          if (r.error) return rej(new Error('Google sign-in: ' + r.error));
-          S.token = r.access_token; S.tokenExp = Date.now() + (r.expires_in || 3600) * 1000; res(S.token);
-        },
-        error_callback: e => rej(new Error('Google sign-in was closed or blocked (' + (e.type || 'error') + ').'))
-      });
-      tc.requestAccessToken({ prompt: '' });
-    });
-  }
-  async function drive(path, asBytes) {
-    const tok = await getToken();
-    const r = await fetch('https://www.googleapis.com/drive/v3/' + path, { headers: { Authorization: 'Bearer ' + tok }, referrerPolicy: 'no-referrer', cache: 'no-store' });
-    if (!r.ok) { const err = new Error(`Google Drive said ${r.status} for ${path.split('?')[0]}`); err.status = r.status; throw err; }
-    return asBytes ? r.arrayBuffer() : r.json();
-  }
-  async function openPicker() {
-    if (!S.config.apiKey || !S.config.projectNumber) throw new Error('Add your API key and project number in Settings first.');
-    const tok = await getToken();
-    await loadScript('https://apis.google.com/js/api.js');
-    await new Promise(r => gapi.load('picker', r));
-    return new Promise(res => {
-      // Google only lets this app open the exact files you tick here, never the rest of your Drive.
-      const browse = new google.picker.DocsView(google.picker.ViewId.DOCS)
-        .setMimeTypes('application/pdf').setIncludeFolders(true).setSelectFolderEnabled(false).setLabel('Folders');
-      if (S.lastParent) browse.setParent(S.lastParent);
-      const flat = new google.picker.DocsView(google.picker.ViewId.PDFS).setLabel('All PDFs');
-      new google.picker.PickerBuilder()
-        .setAppId(S.config.projectNumber).setOAuthToken(tok).setDeveloperKey(S.config.apiKey)
-        .addView(browse).addView(flat).enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
-        .setMaxItems(500).setTitle('Tick your statements (bank, cards, payslips, ISA, pension)')
-        .setCallback(d => {
-          if (d.action === google.picker.Action.PICKED) {
-            const ids = d.docs.map(x => x.id);
-            S.ignored = S.ignored.filter(id => !ids.includes(id)); store.set('ignored', S.ignored);
-            const parent = d.docs.map(x => x.parentId).filter(Boolean).pop();
-            if (parent) { S.lastParent = parent; store.set('lastParent', parent); }
-            res(d.docs.length);
-          } else if (d.action === google.picker.Action.CANCEL) res(0);
-        }).build().setVisible(true);
-    });
-  }
-  /** Every PDF you have given this app, on any device. With the drive.file permission Google returns nothing else. */
-  async function listGranted() {
-    const out = []; let pageToken = '';
-    do {
-      const q = encodeURIComponent(`mimeType='application/pdf' and trashed=false`);
-      const j = await drive(`files?q=${q}&fields=nextPageToken,files(id,name,md5Checksum,modifiedTime)&pageSize=500&spaces=drive${pageToken ? '&pageToken=' + pageToken : ''}`);
-      out.push(...j.files); pageToken = j.nextPageToken || '';
-    } while (pageToken);
-    return out.filter(f => !S.ignored.includes(f.id));
-  }
-
   // ---------- saved data: encrypted on this phone (IndexedDB) ----------
   const PARSER_VERSION = 2; // bump when a reader changes, so old statements are read again
   const enc = new TextEncoder(), dec = new TextDecoder();
@@ -280,7 +208,7 @@
       S.sheetLocked = true;
       $('#sheet-body').innerHTML = `<div class="stack">
         <b style="font-size:17px">${change ? 'Choose a new passcode' : 'Lock your saved statements'}</b>
-        <p class="muted small" style="margin:0">What's read from your statements is saved on this phone, encrypted, so the app opens straight away and only downloads new statements. With a passcode, nobody can open it without the code, not even someone using your unlocked phone. If you forget it, erase the saved data and sync again.</p>
+        <p class="muted small" style="margin:0">What's read from your statements is saved on this phone, encrypted, so the app opens straight away and only reads new statements. With a passcode, nobody can open it without the code, not even someone using your unlocked phone. If you forget it, erase the saved data and sync again.</p>
         <label class="field">Passcode (at least 4 characters)<input id="p1" type="password" inputmode="numeric" autocomplete="new-password"></label>
         <label class="field">Type it again<input id="p2" type="password" inputmode="numeric" autocomplete="new-password"></label>
         <div class="row"><button class="btn ghost" id="p-skip">${change ? 'Cancel' : 'No passcode'}</button><button class="btn" id="p-ok">Set passcode</button></div></div>`;
@@ -305,54 +233,7 @@
     status(`updated ${d}`);
   }
 
-  /** Bring the saved data up to date: only new or changed PDFs are downloaded and read. */
-  async function syncDrive() {
-    if (S.loading) return;
-    if (S.demo && S.meta) return toast('This is the sample-data demo. Open the app without ?demo to sync your statements.');
-    S.loading = true; S.progress = 0; status('Checking Google Drive…'); render();
-    let added = 0, changed = 0, removed = 0, failed = 0; const notes = [];
-    try {
-      const listed = await listGranted();
-      if (!listed.length && !Object.keys(S.files).some(id => id.startsWith('local:'))) notes.push({ name: 'No statements yet', why: 'Tap “Add PDFs” (or “Pick statements”) to choose your statement PDFs.' });
-      // Only reached if every listing worked, so nothing is forgotten because of a network blip.
-      const current = new Map(listed.map(f => [f.id, f]));
-      for (const id of Object.keys(S.files)) if (!id.startsWith('local:') && !current.has(id)) { delete S.files[id]; removed++; }
-      const fresh = f => { const c = S.files[f.id]; return c && c.v === PARSER_VERSION && (f.md5Checksum ? c.md5 === f.md5Checksum : c.modified === f.modifiedTime); };
-      const todo = [...current.values()].filter(f => !fresh(f));
-      if (todo.length) await ensureKey();
-      let done = 0, sinceSave = 0;
-      const queue = todo.slice();
-      async function worker() {
-        while (queue.length) {
-          const f = queue.shift(); const existed = !!S.files[f.id];
-          const entry = { name: f.name, md5: f.md5Checksum || '', modified: f.modifiedTime || '', v: PARSER_VERSION };
-          try {
-            let bytes = await drive(`files/${f.id}?alt=media&supportsAllDrives=true`, true);
-            const pages = await P.extractPages(window.pdfjsLib, bytes);
-            bytes = null; // the PDF itself is dropped as soon as it has been read
-            const r = RD.readStatement(pages, f.name);
-            if (r.period && r.type !== 'unsupported' && r.type !== 'unreadable') { entry.result = r; existed ? changed++ : added++; }
-            else entry.skipped = (r.problems || [])[0] || 'Not a statement this app reads';
-            S.files[f.id] = entry;
-          } catch (e) { failed++; notes.push({ name: f.name, why: 'Could not read this time: ' + e.message }); }
-          done++; S.progress = done / todo.length; status(`Reading ${done}/${todo.length}`);
-          const bar = $('#progress div'); if (bar) bar.style.width = (S.progress * 100) + '%';
-          if (++sinceSave >= 5) { sinceSave = 0; await saveVault(); }
-        }
-      }
-      await Promise.all([worker(), worker(), worker()]);
-      S.lastSync = new Date().toISOString(); S.demo = false;
-      await saveVault();
-      rebuild(notes);
-      const bits = [];
-      if (added) bits.push(`${added} new`); if (changed) bits.push(`${changed} updated`); if (removed) bits.push(`${removed} removed`); if (failed) bits.push(`${failed} failed`);
-      toast(bits.length ? 'Synced: ' + bits.join(', ') : 'Already up to date');
-    } catch (e) {
-      toast(e.message);
-    } finally { S.loading = false; statusLine(); render(); }
-  }
-
-  /** Read PDFs chosen with the phone's own file chooser (which can browse Google Drive and "Select all").
+  /** Read PDFs chosen with the phone's own file chooser (any folder, or Google Drive, with "Select all").
    *  Each file is identified by a fingerprint of its contents, so choosing a whole folder again
    *  only reads the statements that are new. Nothing is uploaded anywhere. */
   async function addLocalFiles(list) {
@@ -477,11 +358,10 @@
     ({ home: renderHome, reports: renderReports, pay: renderPay, savings: renderSavings, data: renderData, settings: renderSettings })[S.view]();
   }
   function emptyState(target, what) {
-    const ready = S.config.clientId && S.config.apiKey && S.config.projectNumber;
     target.innerHTML = `<div class="card empty">
       ${S.loading ? `<p><b>Reading your statements…</b></p><div class="progress" id="progress"><div style="width:${S.progress * 100}%"></div></div>` : `
       <p><b>${what || 'No statements yet'}</b></p>
-      <p class="muted small">Tap <b>Add PDFs</b>, open your statements folder (your phone's file chooser can browse Google Drive) and choose <b>Select all</b>. Only statements the app hasn't seen before are read.</p>
+      <p class="muted small">Tap <b>Add PDFs</b>, open your statements folder (any folder on your phone, or Google Drive) and choose <b>Select all</b>. Only statements the app hasn't seen before are read.</p>
       <button class="btn" data-act="add-local">Add PDFs</button>
       ${S.txns.length ? '' : `<div><button class="btn ghost" style="margin-top:10px" data-act="demo">Explore with sample data</button></div>`}`}
     </div>`;
@@ -594,7 +474,7 @@
     const pc = [['latest', 'Pay month'], ['3', '3 months'], ['6', '6 months'], ['12', '12 months'], ['tax', 'Tax year'], ['all', 'All']];
 
     el.innerHTML = `
-      ${S.demo ? `<div class="card notice small">You are looking at <b>invented sample data</b>. Sync your statements from the Statements tab.</div>` :
+      ${S.demo ? `<div class="card notice small">You are looking at <b>invented sample data</b>. Add your statements from the Statements tab.</div>` :
         `<div class="row small"><span class="muted">${S.loading ? 'Reading…' : 'Updated ' + esc(synced)}</span><button class="btn ghost slim" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add statements</button></div>`}
       <div class="chips" role="tablist">${pc.map(([k, l]) => `<button class="chip ${S.period === k ? 'on' : ''}" data-act="period" data-v="${k}">${l}</button>`).join('')}</div>
       <div class="muted small">${esc(r.label)}<br>Bank to ${latestOf('santander') ? niceShort(latestOf('santander')) : '—'} · Amex to ${latestOf('amex') ? niceShort(latestOf('amex')) : '—'} · Tesco to ${latestOf('tesco') ? niceShort(latestOf('tesco')) : '—'}</div>
@@ -885,8 +765,6 @@
   }
   function renderData() {
     const el = $('#view-data');
-    const ready = S.config.clientId && S.config.apiKey && S.config.projectNumber;
-    const c0 = S.config;
     const cov = S.statements.length ? coverage() : null;
     const repays = S.txns.filter(t => t.repayStatus).slice(-6).reverse();
     const lastIsa = S.isa[S.isa.length - 1], lastPen = S.pension[S.pension.length - 1];
@@ -896,7 +774,7 @@
       <h2>Add statements</h2>
       <div class="card stack">
         <button class="btn" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add PDFs</button>
-        <p class="muted small" style="margin:0">Opens your phone's file chooser. Go to <b>Google Drive</b> (or Downloads), open a statements folder, then <b>⋮ → Select all</b> and tap <b>Select</b>. <b>Or:</b> in the Google Drive app, select the PDFs, tap <b>Share → Ledger</b>. Choose the whole folder every time if you like: the app recognises statements it has already read and only reads new ones. Nothing is uploaded.</p>
+        <p class="muted small" style="margin:0">Opens your phone's file chooser. Choose any folder on your phone (such as Downloads) or open <b>Google Drive</b>, then open a statements folder, then <b>⋮ → Select all</b> and tap <b>Select</b>. <b>Or:</b> in the Google Drive app, select the PDFs, tap <b>Share → Ledger</b>. Choose the whole folder every time if you like: the app recognises statements it has already read and only reads new ones. Nothing is uploaded.</p>
       </div>
       ${cov ? `<h2>Statement coverage</h2>
       <div class="card"><div class="grid"><span></span>${cov.months.map(m => `<span class="h">${MON[+m.slice(5) - 1]}</span>`).join('')}
@@ -906,19 +784,7 @@
       ${cov.missing.length || cov.gaps.length ? `<div class="card notice small">${cov.missing.length ? `<b>Missing:</b> ${cov.missing.map(esc).join(', ')}.` : ''}${cov.gaps.length ? `<br><b>Gap in bank statements:</b> ${cov.gaps.map(esc).join('; ')}.` : ''}</div>` : `<div class="card notice good small">Everything up to date.</div>`}
       ${repays.length ? `<h2>Card repayments from the joint account</h2><div class="card"><ul class="list">${repays.map(t => `<li class="tap" data-act="txn" data-v="${t.key}"><div class="who"><b>${/AMERICAN EXP|AMEX/i.test(t.desc) ? 'Amex' : 'Tesco'} · paid ${niceShort(t.date)}</b><span>${t.repayStatus === 'matched' ? 'matches the card statement balance' : t.repayStatus === 'covered' ? 'card statements loaded, no exact balance match' : 'no card statement yet: counted as spending'}</span></div><span class="${t.repayStatus === 'matched' ? 'in' : t.repayStatus === 'covered' ? 'muted' : 'out'}">${gbp(-t.amount)} ${t.repayStatus === 'matched' ? '✓' : '?'}</span></li>`).join('')}</ul></div>` : ''}` : ''}
 
-      ${ready && c0.on ? `      <h2>Or sync with Google Drive</h2>
-      <div class="card stack">
-        <div class="row" style="flex-wrap:wrap">
-          <button class="btn ghost" data-act="pick" ${ready ? '' : 'disabled'}>Pick statements</button>
-          <button class="btn ghost" data-act="load" ${ready && !S.loading ? '' : 'disabled'}>Sync with Drive</button>
-        </div>
-        ${S.loading ? `<div class="progress" id="progress"><div style="width:${S.progress * 100}%"></div></div>` : ''}
-        ${!ready ? '<p class="muted small" style="margin:0">Add your Google settings in Settings first.</p>' : ''}
-        <p class="muted small" style="margin:0"><b>Pick statements</b> opens Google Drive. Tick the statement PDFs (use the <b>All PDFs</b> tab to see the newest first). Google then lets this app open those files and nothing else in your Drive. Files you've ticked on any device, such as your laptop, are found here at the next <b>Sync</b>. Each month, tick the new statements and sync.</p>
-        ${S.ignored.length ? `<p class="muted small" style="margin:0">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app. <button class="btn ghost slim" data-act="unignore">Use them again</button></p>` : ''}
-      </div>
-
-` : ''}
+      ${S.ignored.length ? `<div class="card small"><span class="muted">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app and left out when you add PDFs.</span> <button class="btn ghost slim" data-act="unignore">Use them again</button></div>` : ''}
       ${groups.map(([type, label]) => { const list = S.statements.filter(s => s.type === type).slice().reverse(); return list.length ? `<h2>${label} (${list.length})</h2>
       <div class="card"><ul class="list">${list.map(s => `<li><div class="who"><b>${s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end))}</b><span>${esc(s.name)}${s.count ? ' · ' + s.count + ' transactions' : ''}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}</div><span class="${s.ok ? 'in' : 'out'}">${s.ok ? '✓' : '⚠'}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`).join('')}</ul></div>` : ''; }).join('')}
       ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div>${s.id ? `<button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button>` : ''}</li>`).join('')}</ul></div>` : ''}
@@ -927,7 +793,7 @@
 
   // ---------- Settings ----------
   function renderSettings() {
-    const el = $('#view-settings'); const c = S.config;
+    const el = $('#view-settings');
     el.innerHTML = `
       <h2>Your categorisation rules (${S.rules.length})</h2>
       <div class="card stack">
@@ -950,33 +816,23 @@
       <h2>Appearance</h2>
       <div class="card"><div class="seg" id="theme">${['auto', 'light', 'dark'].map(t => `<button data-v="${t}" class="${(store.get('theme', 'auto')) === t ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div></div>
 
-      <h2>Optional: Google Drive sync</h2>
-      <details class="card" ${c.on ? 'open' : ''}><summary class="small" style="cursor:pointer">Not needed if you use <b>Add PDFs</b>. Tap to set up.</summary>
-        <div class="stack" style="margin-top:10px">
-          <p class="small muted" style="margin:0">Lets the app fetch statements from Google Drive itself, using your own Google Cloud project (see the end of the setup guide). Leave blank otherwise.</p>
-          <label class="field">OAuth Client ID<input id="c-id" value="${esc(c.clientId)}" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off"></label>
-          <label class="field">API key (restricted to the Picker API)<input id="c-key" value="${esc(c.apiKey)}" placeholder="AIza…" autocomplete="off"></label>
-          <label class="field">Project number<input id="c-proj" value="${esc(c.projectNumber)}" inputmode="numeric" placeholder="123456789012" autocomplete="off"></label>
-          <button class="btn" data-act="save-config">Save</button>
-        </div></details>
-
       <h2>Saved data</h2>
       <div class="card stack small">
-        ${!S.meta ? '<div class="muted">Nothing saved yet. Your first sync saves what it reads here, encrypted.</div>' : `
+        ${!S.meta ? '<div class="muted">Nothing saved yet. Your first statements are saved here, encrypted.</div>' : `
         <div><b>${S.statements.length} statement${S.statements.length === 1 ? '' : 's'} saved</b>, encrypted on this phone${S.meta.mode === 'pin' ? ' and locked with a passcode. It locks itself after 5 minutes in the background.' : ' without a passcode. Anyone who can open this app on your phone can see them.'}</div>
         <div class="row" style="flex-wrap:wrap">${S.meta.mode === 'pin'
           ? '<button class="btn ghost" data-act="lock">Lock now</button><button class="btn ghost" data-act="change-pin">Change passcode</button><button class="btn danger" data-act="remove-pin">Remove passcode</button>'
           : '<button class="btn" data-act="change-pin">Set a passcode</button>'}</div>
-        <div class="row"><span class="muted">Erase saved statements. Your settings and rules stay, and the next sync reads everything again.</span><button class="btn danger" data-act="erase-data">Erase</button></div>`}
+        <div class="row"><span class="muted">Erase saved statements. Your settings and rules stay, and you add the PDFs again.</span><button class="btn danger" data-act="erase-data">Erase</button></div>`}
       </div>
 
       <h2>Privacy</h2>
       <div class="card stack small">
         <div>• Statement PDFs are read in this phone's memory, then discarded. The PDFs are never saved or uploaded.</div>
-        <div>• What's read from them is saved on this phone with AES-256 encryption, so the app opens straight away and only new statements are downloaded.</div>
-        <div>• No server, no analytics, no AI. The app doesn't contact anyone, apart from Google if you set up the optional Drive sync.</div>
+        <div>• What's read from them is saved on this phone with AES-256 encryption, so the app opens straight away and only new statements are read.</div>
+        <div>• No server, no analytics, no AI. After it loads, the app doesn't contact anyone.</div>
         <div>• Also saved on this phone: the settings above, your rules, saved reports, and category corrections (stored as one-way hashes).</div>
-        <div class="row">${c.clientId ? '<button class="btn danger" data-act="sign-out">Sign out of Google</button>' : '<span></span>'}<button class="btn danger" data-act="forget">Forget everything</button></div>
+        <div class="row"><span></span><button class="btn danger" data-act="forget">Forget everything</button></div>
       </div>
       <p class="muted small" style="text-align:center">Household Ledger v2.3 · bank, cards, payslips, ISA and pension</p>`;
     let dir = '';
@@ -1001,14 +857,12 @@
         case 'go-settings': return go('settings');
         case 'demo': return loadDemo();
         case 'add-local': return chooseLocalFiles();
-        case 'load': return syncDrive();
-        case 'pick': { const n = await openPicker(); if (n) { toast(`${n} file${n === 1 ? '' : 's'} shared with the app. Syncing…`); return syncDrive(); } return; }
         case 'ignore': {
-          if (!confirm('Stop using this file in the app? (It stays in your Google Drive.)')) return;
+          if (!confirm('Stop using this file in the app? (The PDF itself is untouched wherever you keep it.)')) return;
           S.ignored = [...new Set(S.ignored.concat(v))]; store.set('ignored', S.ignored);
           delete S.files[v]; await saveVault(); rebuild(); return render();
         }
-        case 'unignore': S.ignored = []; store.set('ignored', S.ignored); renderData(); return toast('Tap Sync with Drive to read them again.');
+        case 'unignore': S.ignored = []; store.set('ignored', S.ignored); renderData(); return toast('Add the PDFs again to read them.');
         case 'unlock': {
           const pin = $('#pin').value; if (!pin) return;
           a.disabled = true;
@@ -1019,7 +873,7 @@
         case 'change-pin': { const pin = await askNewPin(S.meta && S.meta.mode === 'pin'); if (pin === undefined) return; if (pin === null && S.meta && S.meta.mode !== 'pin') return; await setPin(pin); renderSettings(); return toast(pin ? 'Passcode set' : 'Saved without a passcode'); }
         case 'remove-pin': if (!confirm('Remove the passcode? Anyone who can open this app on your phone will see your saved statements.')) return; await setPin(null); renderSettings(); return toast('Passcode removed');
         case 'erase-data':
-          if (!confirm('Erase the saved statements from this phone? Your settings and rules are kept. The next sync reads every statement again.')) return;
+          if (!confirm('Erase the saved statements from this phone? Your settings and rules are kept. You add the PDFs again to read them.')) return;
           await idb.clear(); S.files = {}; S.key = null; S.meta = null; S.locked = false; S.lastSync = null; rebuild(); statusLine(); return go('home');
         case 'period': S.period = v; return renderHome();
         case 'toggle-oneoffs': S.hideOneOffs = !S.hideOneOffs; store.set('hideOneOffs', S.hideOneOffs); return renderHome();
@@ -1038,7 +892,6 @@
         case 'save-preset': { const name = prompt('Name this report', f.q || (f.cats[0] || 'My report')); if (!name) return; S.presets.push({ name, filter: JSON.parse(JSON.stringify(f)) }); store.set('presets', S.presets); renderReports(); return toast('Saved. It appears at the top of Reports.'); }
         case 'preset': S.filter = Object.assign(blankFilter(), JSON.parse(JSON.stringify(S.presets[+v].filter))); return renderReports();
         case 'del-preset': S.presets.splice(+v, 1); store.set('presets', S.presets); return renderSettings();
-        case 'save-config': S.config = { clientId: $('#c-id').value.trim(), apiKey: $('#c-key').value.trim(), projectNumber: $('#c-proj').value.trim(), on: !!$('#c-id').value.trim() }; store.set('config', S.config); S.token = null; return toast('Saved');
         case 'del-rule': S.rules.splice(+v, 1); store.set('rules', S.rules); recategorise(); return renderSettings();
         case 'import-rules': {
           let arr; try { arr = JSON.parse($('#r-json').value); } catch { return toast('That is not valid JSON.'); }
@@ -1050,9 +903,6 @@
           store.set('rules', S.rules); recategorise(); renderSettings(); return toast(`Imported ${ok.length} rules`);
         }
         case 'copy-rules': await navigator.clipboard.writeText(JSON.stringify(S.rules, null, 1)); return toast('Rules copied');
-        case 'sign-out':
-          if (S.token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(S.token, () => { });
-          S.token = null; return toast('Signed out of Google. Your saved statements are still here.');
         case 'forget':
           if (!confirm('Remove all saved statements, settings, sources, rules and saved reports from this phone?')) return;
           store.clear(); await idb.clear(); location.reload(); return;
@@ -1069,6 +919,8 @@
 
   async function start() {
     applyTheme();
+    // Clean out settings left behind by earlier versions (Google sync no longer exists).
+    try { ['config', 'lastParent', 'sources'].forEach(k => localStorage.removeItem('ledger.' + k)); } catch { }
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
       const hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => { });
