@@ -1,6 +1,6 @@
 /* Settings screen. */
 import { CATEGORIES } from './deps.js';
-import { rebuild, recategorise } from './model.js';
+import { accountName, rebuild, recategorise } from './model.js';
 import { cycleLabel, cycleOf, payDay } from './period.js';
 import { S } from './state.js';
 import { applyTheme, toast } from './ui.js';
@@ -19,6 +19,13 @@ export function renderSettings() {
       </label>
       <div class="small muted">Current cycle example: <b>${niceShort(eg.start)} – ${niceShort(eg.end)}</b> (${cycleLabel(eg.key)}). Changing this re-groups existing transactions; it does not re-read PDFs. Bank statements run 6th to 5th, so if your pay month starts on another day, the first and last pay month are only part covered. The dashboard leaves those out and says so, until the rest of the statements are added.</div>
     </div>
+
+    ${S.accountList.length ? `<h2>Accounts</h2>
+    <div class="card stack">
+      <p class="small muted" style="margin:0">Household accounts are merged into one household view. A personal account is kept apart and shown when you pick it at the top of the Dashboard and Reports. You need at least one household account. Changing this regroups what is already saved; nothing is read again.</p>
+      <ul class="list">${S.accountList.map(a => `<li><div class="who"><b>${esc(accountName(a))}</b><span>${a.role ? (a.role === 'household' ? 'Household' : 'Personal') : 'Waiting for you to choose'}</span></div>
+        <div class="seg">${['household', 'personal'].map(r => `<button class="${a.role === r ? 'on' : ''}" data-act="acc-role" data-v="${esc(a.id)}|${r}">${r === 'household' ? 'Household' : 'Personal'}</button>`).join('')}</div></li>`).join('')}</ul>
+    </div>` : ''}
 
     <h2>Your categorisation rules (${S.rules.length})</h2>
     <div class="card stack">
@@ -59,7 +66,7 @@ export function renderSettings() {
       <div>• Also saved on this phone: the settings above, your rules, saved reports, and category corrections (stored as one-way hashes).</div>
       <div class="row"><span></span><button class="btn danger" data-act="forget">Forget everything</button></div>
     </div>
-    <p class="muted small" style="text-align:center">Household Ledger v3.0 · bank, cards, payslips, ISA and pension</p>`;
+    <p class="muted small" style="text-align:center">Household Ledger v4.0 · household and personal accounts, cards, payslips, ISA and pension</p>`;
   let dir = '';
   $('#r-dir').addEventListener('click', e => { if (e.target.dataset.v === undefined) return; dir = e.target.dataset.v; [...$('#r-dir').children].forEach(b => b.classList.toggle('on', b === e.target)); });
   $('[data-act="add-rule"]').addEventListener('click', () => {

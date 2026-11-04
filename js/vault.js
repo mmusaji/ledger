@@ -4,7 +4,7 @@ import { S } from './state.js';
 import { go, statusLine, toast } from './ui.js';
 import { $ } from './util.js';
 
-export const PARSER_VERSION = 2; // bump when a reader changes, so old statements are read again
+export const PARSER_VERSION = 3; // bump when a reader changes, so old statements are read again
 
 const enc = new TextEncoder(), dec = new TextDecoder();
 

@@ -1,6 +1,7 @@
 /* Start-up: opens saved data, shows the first screen, and registers the service worker for updates and offline use. */
 import { loadDemo } from './demo.js';
 import { bindEvents } from './events.js';
+import { checkNewAccounts } from './accounts.js';
 import { checkInbox } from './ingest.js';
 import { S } from './state.js';
 import { applyTheme, go, render, statusLine, toast } from './ui.js';
@@ -28,6 +29,7 @@ async function start() {
   statusLine(); render();
   if (new URLSearchParams(location.search).has('shared')) { history.replaceState(null, '', location.pathname); if (!S.locked) go('data'); }
   checkInbox();
+  checkNewAccounts();
 }
 
 bindEvents();

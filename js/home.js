@@ -1,7 +1,7 @@
 /* Dashboard screen. */
-import { barChart, bars, lineChart, personCls } from './charts.js';
+import { barChart, bars, lineChart, personCls, scopeBar } from './charts.js';
 import { GROUP_OF } from './deps.js';
-import { inRange, isSpend, oneOff, rangeFor } from './model.js';
+import { accIdOf, accountName, activeScope, balanceSeries, inRange, isCurrent, isSpend, oneOff, personalAccounts, rangeFor, scopeStatements, scopeTxns } from './model.js';
 import { cycleShort } from './period.js';
 import { S } from './state.js';
 import { emptyState } from './ui.js';
@@ -11,19 +11,24 @@ export function renderHome() {
   const el = $('#view-home');
   if (!S.txns.length) return emptyState(el);
   const r = rangeFor(S.period); if (!r) return emptyState(el, 'No bank statements yet');
-  const all = S.txns.filter(t => inRange(t, r));
+  const sc = activeScope(), mz = sc !== 'household';
+  const scAcc = personalAccounts().find(a => a.id === sc);
+  const base = scopeTxns();
+  const all = base.filter(t => inRange(t, r));
   const offs = all.filter(oneOff);
   const tx = S.hideOneOffs ? all.filter(t => !oneOff(t)) : all;
   const income = sum(tx.filter(t => t.group === 'income'));
   const spendTx = tx.filter(isSpend);
   const spending = -sum(spendTx);
   const saved = -sum(tx.filter(t => t.group === 'saving'));
-  const bank = all.filter(t => t.type === 'bank');
-  const last = bank[bank.length - 1];
-  const low = bank.reduce((m, t) => (!m || t.balance < m.balance ? t : m), null);
-  const odDays = new Set(bank.filter(t => t.balance < 0).map(t => t.date)).size;
+  const series = balanceSeries(base.filter(isCurrent)).filter(p => p.date >= r.from && p.date <= r.to);
+  const potNet = -sum(tx.filter(t => t.pot));
+  const lastMz = scopeStatements().filter(s => s.type === 'monzo').pop();
+  const last = series.length ? { balance: series[series.length - 1].v, date: series[series.length - 1].date } : null;
+  const low = series.reduce((m, p) => (!m || p.v < m.balance ? { balance: p.v, date: p.date } : m), null);
+  const odDays = new Set(series.filter(p => p.v < 0).map(p => p.date)).size;
   const unmatched = all.filter(t => t.repayStatus === 'nocard');
-  const latestOf = type => S.statements.filter(s => s.type === type).map(s => s.period.end).sort().pop();
+  const latestOf = type => (type === 'santander' ? scopeStatements() : S.statements).filter(s => s.type === type).map(s => s.period.end).sort().pop();
   const synced = S.lastSync ? new Date(S.lastSync).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
   // who spent what
@@ -37,12 +42,13 @@ export function renderHome() {
   const catRows = Object.entries(byCat).filter(([, v]) => v > 0).map(([k, v]) => ({ k, v, cls: GROUP_OF[k] === 'cards' ? 'cards' : '' })).sort((a, b) => b.v - a.v);
   // per pay month
   const perCycle = r.keys.map(k => {
-    const t2 = S.txns.filter(t => t.cycle === k && (!S.hideOneOffs || !oneOff(t)));
+    const t2 = base.filter(t => t.cycle === k && (!S.hideOneOffs || !oneOff(t)));
     return { label: cycleShort(k), a: sum(t2.filter(t => t.group === 'income')), b: -sum(t2.filter(isSpend)) };
   });
   // regular payments from the latest bank statement
-  const lb = S.statements.filter(s => s.type === 'santander').pop();
-  const reg = lb ? S.txns.filter(t => t.type === 'bank' && t.date >= lb.period.start && t.date <= lb.period.end && t.amount < 0 && (t.kind === 'Direct debit' || t.kind === 'Standing order')) : [];
+  // each household account's latest statement
+  const lbs = mz ? [] : Object.values(scopeStatements().filter(s => s.type === 'santander').reduce((o, s) => { o[accIdOf(s)] = s; return o; }, {}));
+  const reg = lbs.length ? base.filter(t => t.type === 'bank' && lbs.some(lb => accIdOf(lb) === t.accId && t.date >= lb.period.start && t.date <= lb.period.end) && t.amount < 0 && (t.kind === 'Direct debit' || t.kind === 'Standing order')) : [];
   const regTotal = -sum(reg);
   const byDay = {}; reg.forEach(t => { const d = +t.date.slice(8); byDay[d] = (byDay[d] || 0) - t.amount; });
   const peak = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
@@ -55,19 +61,23 @@ export function renderHome() {
   el.innerHTML = `
     ${S.demo ? `<div class="card notice small">You are looking at <b>invented sample data</b>. Add your statements from the Statements tab.</div>` :
       `<div class="row small"><span class="muted">${S.loading ? 'Reading…' : 'Updated ' + esc(synced)}</span><button class="btn ghost slim" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add statements</button></div>`}
+    ${scopeBar()}
     <div class="chips" role="tablist">${pc.map(([k, l]) => `<button class="chip ${S.period === k ? 'on' : ''}" data-act="period" data-v="${k}">${l}</button>`).join('')}</div>
-    <div class="muted small">${esc(r.label)}<br>Bank to ${latestOf('santander') ? niceShort(latestOf('santander')) : '—'} · Amex to ${latestOf('amex') ? niceShort(latestOf('amex')) : '—'} · Tesco to ${latestOf('tesco') ? niceShort(latestOf('tesco')) : '—'}</div>
-    ${(r.part || []).map(x => `<div class="card notice small">The pay month starting ${esc(nice(x.start))} is only part covered by your bank statements (${esc(niceShort(x.from))} – ${esc(niceShort(x.to))}), so it is left out of the totals until the rest is added.</div>`).join('')}
+    <div class="muted small">${esc(r.label)}<br>${mz ? `${esc(scAcc ? accountName(scAcc) : 'Account')} to ${(() => { const e = scopeStatements().map(s => s.period.end).sort().pop(); return e ? niceShort(e) : '—'; })()}` : `Bank to ${latestOf('santander') ? niceShort(latestOf('santander')) : '—'} · Amex to ${latestOf('amex') ? niceShort(latestOf('amex')) : '—'} · Tesco to ${latestOf('tesco') ? niceShort(latestOf('tesco')) : '—'}`}</div>
+    ${(r.outside || []).length ? `<div class="card notice small">${r.outside.length} pay month${r.outside.length === 1 ? ' is' : 's are'} left out because not every household account has statements for ${r.outside.length === 1 ? 'it' : 'them'}.</div>` : ''}
+    ${(r.part || []).map(x => `<div class="card notice small">The pay month starting ${esc(nice(x.start))} is only part covered by your ${mz ? 'account' : 'bank'} statements (${esc(niceShort(x.from))} – ${esc(niceShort(x.to))}), so it is left out of the totals until the rest is added.</div>`).join('')}
     <div class="kpis">
-      <div class="kpi"><div class="label">Income</div><div class="value in">${gbp0(income)}</div><div class="sub">salary, shares, contributions</div></div>
-      <div class="kpi"><div class="label">Spending</div><div class="value out">${gbp0(spending)}</div><div class="sub">bank + all cards${S.hideOneOffs ? ', no one-offs' : ''}</div></div>
+      <div class="kpi"><div class="label">Income</div><div class="value in">${gbp0(income)}</div><div class="sub">${mz ? 'money in, incl. from the household account' : 'salary, shares, contributions'}</div></div>
+      <div class="kpi"><div class="label">Spending</div><div class="value out">${gbp0(spending)}</div><div class="sub">${mz ? 'this account, incl. to the household account' : 'bank + all cards'}${S.hideOneOffs ? ', no one-offs' : ''}</div></div>
       <div class="kpi"><div class="label">Left over</div><div class="value ${income - spending >= 0 ? 'in' : 'out'}">${gbp0(income - spending)}</div><div class="sub">income − spending</div></div>
       <div class="kpi"><div class="label">One-offs</div><div class="value">${gbp0(-sum(offs))}</div><div class="sub">${offs.length} item${offs.length === 1 ? '' : 's'} ≥ £500</div></div>
-      <div class="kpi"><div class="label">Into savings (net)</div><div class="value">${gbp0(saved)}</div><div class="sub">savings, ISA, T212, JISA</div></div>
-      <div class="kpi"><div class="label">Bank balance</div><div class="value">${last ? gbp0(last.balance) : '—'}</div><div class="sub">${last ? 'at ' + niceShort(last.date) : ''}</div></div>
+      ${mz ? `<div class="kpi"><div class="label">Moved to pots (net)</div><div class="value">${gbp0(potNet)}</div><div class="sub">not counted as spending</div></div>` : `<div class="kpi"><div class="label">Into savings (net)</div><div class="value">${gbp0(saved)}</div><div class="sub">savings, ISA, T212, JISA</div></div>`}
+      <div class="kpi"><div class="label">${mz ? 'Account balance' : 'Bank balance'}</div><div class="value">${last ? gbp0(last.balance) : '—'}</div><div class="sub">${last ? 'at ' + niceShort(last.date) + (mz ? ', excluding pots' : '') : ''}</div></div>
     </div>
     <div class="card toggle" data-act="toggle-oneoffs" role="switch" aria-checked="${S.hideOneOffs}"><span>Hide one-off payments (£500+)</span><span class="sw ${S.hideOneOffs ? 'on' : ''}"></span></div>
     ${unmatched.length ? `<div class="card notice small">${unmatched.length} card repayment${unmatched.length > 1 ? 's' : ''} (${gbp(-sum(unmatched))}) counted as spending because the card statement for that month isn't in Drive.</div>` : ''}
+
+    ${mz && lastMz && lastMz.pots != null ? `<div class="card small"><div class="row"><b>Balance in pots</b><b class="num">${gbp(lastMz.pots)}</b></div><div class="muted">At ${esc(nice(lastMz.period.end))}. Includes savings pots held with other providers. Pots are not part of the household figures.</div></div>` : ''}
 
     <h2>Who spent what</h2>
     <div class="card">${people.map(([p, v]) => `
@@ -85,7 +95,7 @@ export function renderHome() {
     ${low ? `<h2>Bank balance</h2><div class="card ${low.balance < 0 ? 'notice bad' : 'notice good'}">
       <div class="row"><b>Lowest</b><span class="num ${low.balance < 0 ? 'out' : ''}">${gbp(low.balance)}</span></div>
       <div class="muted small">${nice(low.date)}${low.balance < 0 ? ` · overdrawn on ${odDays} day${odDays === 1 ? '' : 's'}` : ' · never overdrawn in this period'}</div>
-      <div class="chart" style="margin-top:8px">${lineChart(bank.map(t => ({ d: t.date, v: t.balance })), 'Account balance')}</div></div>` : ''}
+      <div class="chart" style="margin-top:8px">${lineChart(series.map(p => ({ d: p.date, v: p.v })), 'Account balance')}</div></div>` : ''}
 
     ${reg.length ? `<h2>Direct debits &amp; standing orders</h2>
     <div class="card">

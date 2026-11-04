@@ -38,8 +38,8 @@ export function render() {
   ({ home: renderHome, reports: renderReports, pay: renderPay, savings: renderSavings, data: renderData, settings: renderSettings })[S.view]();
 }
 
-export function emptyState(target, what) {
-  target.innerHTML = `<div class="card empty">
+export function emptyState(target, what, pre = '') {
+  target.innerHTML = `${pre}<div class="card empty">
     ${S.loading ? `<p><b>Reading your statements…</b></p><div class="progress" id="progress"><div style="width:${S.progress * 100}%"></div></div>` : `
     <p><b>${what || 'No statements yet'}</b></p>
     <p class="muted small">Tap <b>Add PDFs</b>, open your statements folder (any folder on your phone, or Google Drive) and choose <b>Select all</b>. Only statements the app hasn't seen before are read.</p>

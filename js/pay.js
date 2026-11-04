@@ -1,19 +1,21 @@
 /* Pay screen (payslips). */
-import { barChart } from './charts.js';
+import { barChart, scopeBar } from './charts.js';
+import { activeScope, isCurrent, scopeTxns } from './model.js';
 import { S } from './state.js';
 import { emptyState } from './ui.js';
 import { $, MON, daysBetween, esc, gbp, gbp0, nice, niceShort, sum } from './util.js';
 
 export function renderPay() {
   const el = $('#view-pay');
-  const ps = S.payslips;
-  if (!ps.length) return emptyState(el, 'No payslips yet. Tick your payslips with Pick statements on the Statements tab.');
+  // in a personal account only the payslips whose net pay arrived in that account are shown
+  const ps = activeScope() === 'household' ? S.payslips : S.payslips.filter(x => scopeTxns().some(t => isCurrent(t) && t.amount === x.net && Math.abs(daysBetween(x.payDate, t.date)) <= 7));
+  if (!ps.length) return emptyState(el, activeScope() === 'household' ? 'No payslips yet. Tick your payslips with Pick statements on the Statements tab.' : 'No payslips are paid into this account. Its income is money transferred in from the household account.', scopeBar());
   if (S.payIdx === null || S.payIdx >= ps.length) S.payIdx = ps.length - 1;
   const p = ps[S.payIdx];
   const gross = p.grossBeforePension;
   const segs = [['Net pay', p.net, 'k1'], ['Tax + NI', p.tax + p.ni + (p.rsuWithholding || 0), 'kr'], ['Pension', p.pensionEmployee, 'k3'], ['ESPP', p.espp, 'k2'], ['Other', p.otherDeductions, 'k4']].filter(s => s[1] > 0);
   const segTotal = sum(segs, s => s[1]) || 1;
-  const bankHit = S.txns.find(t => t.type === 'bank' && t.amount === p.net && Math.abs(daysBetween(p.payDate, t.date)) <= 7);
+  const bankHit = scopeTxns().find(t => isCurrent(t) && t.amount === p.net && Math.abs(daysBetween(p.payDate, t.date)) <= 7);
   const ty = p.payDate.slice(5) >= '04-06' ? +p.payDate.slice(0, 4) : +p.payDate.slice(0, 4) - 1;
   const inTy = ps.filter(x => x.payDate >= `${ty}-04-06` && x.payDate <= `${ty + 1}-04-05`);
   const tyPenYou = sum(inTy, x => x.pensionEmployee), tyPenEr = sum(inTy, x => x.pensionEmployer);
@@ -21,6 +23,7 @@ export function renderPay() {
   const notional = (p.items || []).filter(x => x.kind === 'notional');
   const last12 = ps.slice(-12);
   el.innerHTML = `
+    ${scopeBar()}
     <div class="chips">${ps.map((x, i) => `<button class="chip ${i === S.payIdx ? 'on' : ''}" data-act="payslip" data-v="${i}">${MON[+x.payDate.slice(5, 7) - 1]} ${x.payDate.slice(2, 4)}</button>`).slice(-14).join('')}</div>
     <div class="muted small">Paid ${nice(p.payDate)}${p.employer ? ' · ' + esc(p.employer) : ''}${p.ok ? '' : ' · <span class="out">⚠ ' + esc(p.problems[0] || 'check') + '</span>'}</div>
     <h2>Where your pay went</h2>

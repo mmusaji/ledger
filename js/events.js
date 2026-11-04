@@ -2,6 +2,7 @@
 import { loadDemo } from './demo.js';
 import { GROUP_OF } from './deps.js';
 import { renderHome } from './home.js';
+import { setRole } from './accounts.js';
 import { checkInbox, chooseLocalFiles } from './ingest.js';
 import { rangeFor, rebuild, recategorise } from './model.js';
 import { renderPay } from './pay.js';
@@ -44,6 +45,12 @@ export function bindEvents() {
         case 'erase-data':
           if (!confirm('Erase the saved statements from this phone? Your settings and rules are kept. You add the PDFs again to read them.')) return;
           await idb.clear(); S.files = {}; S.key = null; S.meta = null; S.locked = false; S.lastSync = null; rebuild(); statusLine(); return go('home');
+        case 'acc-role': {
+          const [id, role] = v.split('|');
+          if (role === 'personal' && !S.accountList.some(a => a.id !== id && a.role === 'household')) return toast('You need at least one household account.');
+          setRole(id, role); if (role === 'household' && S.scope === id) { S.scope = 'household'; store.set('scope', 'household'); } return render();
+        }
+        case 'scope': S.scope = v; store.set('scope', v); S.filter = blankFilter(); return render();
         case 'period': S.period = v; return renderHome();
         case 'toggle-oneoffs': S.hideOneOffs = !S.hideOneOffs; store.set('hideOneOffs', S.hideOneOffs); return renderHome();
         case 'cat': { const r = rangeFor(S.period); S.filter = Object.assign(blankFilter(), { cats: [v], from: r.from, to: r.to, dir: 'both' }); return go('reports'); }

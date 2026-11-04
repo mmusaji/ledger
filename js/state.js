@@ -10,6 +10,8 @@ export const S = {
   ignored: store.get('ignored', []), // files you removed from the app (left out even if you select the whole folder again)
   files: {}, lastSync: null, key: null, meta: null, locked: false, hiddenAt: 0, sheetLocked: false,
   demo: false, loading: false, progress: 0,
+  accounts: store.get('accounts', {}), accountList: [],
+  scope: store.get('scope', 'household'),
   view: 'home', period: 'latest', payIdx: null,
   filter: null, showN: 100
 };

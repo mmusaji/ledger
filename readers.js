@@ -286,13 +286,21 @@
     else if (/CLUBCARD Credit Card|Tesco Bank/i.test(all) && /Statement date/.test(all)) r = parseTesco(lines);
     else if (/Santander/.test(all) && /Your transactions/.test(all) && /account summary for/i.test(all)) {
       r = FP.parseSantander(pages, name); r.type = 'santander'; r.institution = 'Santander';
+      const an = all.match(/Account number:\s*(\d{4,})/);
+      r.account = { id: an ? 'santander-' + an[1].slice(-4) : 'santander', bank: 'Santander', last4: an ? an[1].slice(-4) : '' };
+      (r.txns || []).forEach(t => { t.accId = r.account.id; });
       (r.txns || []).forEach(t => { t.account = 'Joint account'; t.holder = 'Joint'; t.type = 'bank'; });
     }
     else if (/Pay Day \d{2}\/\d{2}\/\d{4}/.test(all) && /Total Earnings/.test(all)) r = parsePayslip(lines);
     else if (/MFM Investment|Moneyfarm|moneyfarm/.test(all) && /Account statement produced for/i.test(all)) r = parseMoneyfarm(lines);
     else if (/Aviva/.test(all) && /Value of your pension/.test(all)) r = parseAviva(lines);
     else if (/annual mortgage statement/i.test(all)) return { type: 'unsupported', ok: false, problems: ['Mortgage statement: not read in this version.'] };
-    else return { type: 'unsupported', ok: false, problems: ['Not a statement this app reads.'] };
+    else {
+      // Statement types added as separate plug-in files (readers/*.js). Only tried when none of the readers above matched.
+      const plug = (root.FinPlugins || []).find(p => p.detect(all));
+      if (!plug) return { type: 'unsupported', ok: false, problems: ['Not a statement this app reads.'] };
+      r = plug.read(lines, name);
+    }
     r.name = name;
     (r.txns || []).forEach(t => { t.source = name; t.institution = r.institution; });
     return r;

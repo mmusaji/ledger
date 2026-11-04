@@ -1,5 +1,6 @@
 /* Savings screen (ISA, pension, savings transfers). */
 import { lineChart } from './charts.js';
+import { householdTxns } from './model.js';
 import { S } from './state.js';
 import { emptyState } from './ui.js';
 import { $, esc, gbp, gbp0, nice, niceShort, sum, today } from './util.js';
@@ -14,7 +15,7 @@ export function renderSavings() {
   const isaTyIn = [...new Map(isaTy.map(c => [c.date + c.amount, c])).values()].reduce((s, c) => s + c.amount, 0);
   const penSince = pen ? S.payslips.filter(p => p.payDate > pen.period.end) : [];
   const penSinceAmt = sum(penSince, p => p.pensionEmployee + p.pensionEmployer);
-  const savTx = S.txns.filter(t => t.group === 'saving' && t.date >= `${ty}-04-06`);
+  const savTx = householdTxns().filter(t => t.group === 'saving' && t.date >= `${ty}-04-06`);
   const byDest = {}; savTx.forEach(t => { byDest[t.payee] = (byDest[t.payee] || 0) - t.amount; });
   el.innerHTML = `
     <h2>Moneyfarm ISA</h2>

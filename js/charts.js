@@ -1,5 +1,6 @@
 /* Small chart and bar drawing helpers, and a colour for each person. */
 import { S } from './state.js';
+import { accountName, activeScope, hasPersonal, personalAccounts } from './model.js';
 import { esc, gbp, gbp0, niceShort } from './util.js';
 
 export function barChart(groups, la = 'Income', lb = 'Spending') { // [{label, a, b}] in pence
@@ -55,4 +56,12 @@ export function personCls(name) {
       .forEach((h, i) => { _colourMap[h] = PERSON_COLOURS[i % PERSON_COLOURS.length]; });
   }
   return _colourMap[name] || 'k2';
+}
+
+/** Household / personal account switch. Only shown once a personal account has been added. */
+export function scopeBar() {
+  if (!hasPersonal()) return '';
+  const sc = activeScope();
+  const chips = [['household', 'Household'], ...personalAccounts().map(a => [a.id, accountName(a)])];
+  return `<div class="chips wrap" role="tablist" aria-label="View">${chips.map(([k, l]) => `<button class="chip ${sc === k ? 'on' : ''}" data-act="scope" data-v="${k}">${esc(l)}</button>`).join('')}</div>`;
 }

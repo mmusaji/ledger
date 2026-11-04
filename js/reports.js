@@ -1,5 +1,7 @@
 /* Reports screen: search and filter transactions, with totals. */
+import { scopeBar } from './charts.js';
 import { CATEGORIES } from './deps.js';
+import { scopeTxns } from './model.js';
 import { cycleLabel } from './period.js';
 import { S } from './state.js';
 import { emptyState } from './ui.js';
@@ -11,7 +13,7 @@ function applyFilter(f) {
   const terms = f.q.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const min = f.min === '' ? null : Math.round(parseFloat(f.min) * 100);
   const max = f.max === '' ? null : Math.round(parseFloat(f.max) * 100);
-  return S.txns.filter(t => {
+  return scopeTxns().filter(t => {
     if (t.group === 'internal') return false;
     if (f.from && t.date < f.from) return false;
     if (f.to && t.date > f.to) return false;
@@ -34,7 +36,7 @@ function applyFilter(f) {
 
 export function renderReports() {
   const el = $('#view-reports');
-  if (!S.txns.length) return emptyState(el);
+  if (!scopeTxns().length) return emptyState(el);
   const f = S.filter; if (!f.accounts) f.accounts = [];
   const res = applyFilter(f);
   const out = -sum(res.filter(t => t.amount < 0)), inn = sum(res.filter(t => t.amount > 0));
@@ -42,11 +44,12 @@ export function renderReports() {
   const byPayee = {}; res.forEach(t => { byPayee[t.payee] = byPayee[t.payee] || { v: 0, n: 0 }; byPayee[t.payee].v += t.amount; byPayee[t.payee].n++; });
   const payees = Object.entries(byPayee).sort((a, b) => Math.abs(b[1].v) - Math.abs(a[1].v)).slice(0, 12);
   const byAcc = {}; res.forEach(t => { byAcc[t.account] = byAcc[t.account] || { v: 0, n: 0 }; byAcc[t.account].v += t.amount; byAcc[t.account].n++; });
-  const accounts = [...new Set(S.txns.filter(t => t.group !== 'internal').map(t => t.account))].sort((a, b) => (a === 'Joint account') - (b === 'Joint account') || a.localeCompare(b));
+  const accounts = [...new Set(scopeTxns().filter(t => t.group !== 'internal').map(t => t.account))].sort((a, b) => (a === 'Joint account') - (b === 'Joint account') || a.localeCompare(b));
   const quick = [['latest', 'Pay month'], ['3', '3 months'], ['6', '6 months'], ['tax', 'Tax year'], ['all', 'All dates']];
   const activeCount = (f.cats.length ? 1 : 0) + (f.kinds.length ? 1 : 0) + (f.min || f.max ? 1 : 0);
 
   el.innerHTML = `
+    ${scopeBar()}
     ${S.presets.length ? `<div class="chips">${S.presets.map((p, i) => `<button class="chip" data-act="preset" data-v="${i}">${esc(p.name)}</button>`).join('')}</div>` : ''}
     <div class="card stack">
       <label class="field">Search (separate several with commas)

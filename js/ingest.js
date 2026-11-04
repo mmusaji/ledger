@@ -1,5 +1,6 @@
 /* Adding statements: the phone's file chooser and files sent with Share. Each PDF is read in memory, then discarded. */
 import { P, RD } from './deps.js';
+import { checkNewAccounts } from './accounts.js';
 import { rebuild } from './model.js';
 import { S } from './state.js';
 import { render, status, statusLine, toast } from './ui.js';
@@ -42,7 +43,7 @@ async function addLocalFiles(list) {
     await saveVault(); rebuild(notes);
     toast(`${added} new file${added === 1 ? '' : 's'} read` + (known ? `, ${known} already in the app` : '') + (skippedIgnored ? `, ${skippedIgnored} removed earlier and left out` : ''));
   } catch (e) { toast(e.message); }
-  finally { S.loading = false; statusLine(); render(); }
+  finally { S.loading = false; statusLine(); render(); await checkNewAccounts(); }
 }
 
 /** Files sent with the phone's Share menu (for example from the Google Drive app) are parked briefly by the

@@ -11,6 +11,7 @@ A private app for your phone that reads your own statement PDFs and turns them i
 | Statement | Notes |
 |---|---|
 | **Santander** current / joint account statements | UK format. Every line is checked against the running balance printed on the statement. |
+| **Monzo** current account statements (PDF) | Checked against the running balance and the deposit and outgoing totals printed on the statement. Use the PDF statement, not the CSV export. Pots are shown only in that account's own view. |
 | **Amex** card statements | Split by cardholder. |
 | **Tesco Bank / Clubcard** credit card statements | |
 | **Payslips** | ePay layout only. |
@@ -22,6 +23,7 @@ Anything else is skipped with a message ("Not a statement this app reads"), and 
 ## What you get
 
 - **Dashboard** by pay month (start day adjustable in **Settings**, default 6th; a pay month the statements only partly cover is left out and flagged): income, spending, left over, one-off payments (with a switch to hide them), who spent what, spending by category, bank balance, direct debits and top payees.
+- **Household and personal accounts:** every current account you add is either **Household** (joint or shared) or **Personal**. All household accounts are merged into a single household view, and money moving between them is not counted as income or spending. A personal account is kept apart from the household figures. Once you have one, a switch appears at the top of the Dashboard, Reports, Pay and Statements screens. The first account you add is always the household's.
 - **Reports:** search and filter by text, account or card, dates, in or out, category, payment type and amount, with totals. Save your favourite reports.
 - **Pay:** each payslip from gross to net, pension, tax-year totals.
 - **Savings:** ISA value and allowance, pension value, savings transfers.

@@ -1,14 +1,25 @@
 /* Statements screen: what has been added, what is missing, card repayments. */
+import { scopeBar } from './charts.js';
+import { accIdOf, activeScope, scopeStatements } from './model.js';
 import { S } from './state.js';
 import { $, MON, addDays, daysBetween, esc, gbp, isoOf, monthLabel, nice, niceShort, pad, today } from './util.js';
 
 const TYPES = [['santander', 'Santander', 5], ['amex', 'Amex', 19], ['tesco', 'Tesco CC', 24], ['payslip', 'Payslips', 26]];
 
-function coverage() {
+/** The statements that belong to the view: household = its accounts, cards, payslips, ISA and pension; a personal
+ *  account = just that account. Statements for an account that has no role yet are not shown in either. */
+function inScope() {
+  const sc = activeScope(); const own = new Set(scopeStatements().map(s => s.id));
+  return S.statements.filter(s => (s.type === 'santander' || s.type === 'monzo') ? own.has(s.id) : sc === 'household');
+}
+
+function coverage(list) {
   const end = today(); const months = [];
   for (let i = 5; i >= 0; i--) { const d = new Date(end + 'T00:00:00Z'); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - i); months.push(isoOf(d).slice(0, 7)); }
-  const rows = TYPES.map(([type, label, day]) => ({ type, label, cells: months.map(m => {
-    const st = S.statements.filter(s => s.type === type && s.period.end.slice(0, 7) === m);
+  const types = activeScope() === 'household' ? TYPES.concat(list.some(s => s.type === 'monzo') ? [['monzo', 'Monzo', 4]] : []) : [[list[0] ? list[0].type : 'monzo', list[0] ? (list[0].institution || 'Account') : 'Account', 4]];
+  const rows = types.map(([type, label, day]) => ({ type, label, cells: months.map(m => {
+    // a statement of a current account can cover several months, so it counts for every month it reaches the middle of
+    const st = list.filter(s => s.type === type && (type === 'monzo' ? s.period.start <= m + '-15' && s.period.end >= m + '-15' : s.period.end.slice(0, 7) === m));
     if (st.length) return st.every(s => s.ok) ? 'ok' : 'chk';
     const due = addDays(`${m}-${pad(Math.min(day, 28))}`, 4);
     return end < due ? 'due' : 'miss';
@@ -16,23 +27,27 @@ function coverage() {
   const missing = [];
   rows.forEach(r => r.cells.forEach((c, i) => { if (c === 'miss') missing.push(`${r.label} ${monthLabel(months[i])}`); }));
   // gaps between consecutive bank statements
-  const bank = S.statements.filter(s => s.type === 'santander');
   const gaps = [];
-  for (let i = 1; i < bank.length; i++) {
-    if (daysBetween(bank[i - 1].period.end, bank[i].period.start) > 3) gaps.push(`${niceShort(addDays(bank[i - 1].period.end, 1))} – ${nice(addDays(bank[i].period.start, -1))}`);
-    else if (bank[i - 1].closing !== undefined && bank[i].opening !== undefined && bank[i - 1].closing !== bank[i].opening) gaps.push(`balance doesn't carry over between ${niceShort(bank[i - 1].period.end)} and ${niceShort(bank[i].period.start)}`);
-  }
+  const perAcc = {}; list.filter(s => s.type === 'santander').forEach(s => { (perAcc[accIdOf(s)] = perAcc[accIdOf(s)] || []).push(s); });
+  Object.values(perAcc).forEach(bank => {
+    for (let i = 1; i < bank.length; i++) {
+      if (daysBetween(bank[i - 1].period.end, bank[i].period.start) > 3) gaps.push(`${niceShort(addDays(bank[i - 1].period.end, 1))} – ${nice(addDays(bank[i].period.start, -1))}`);
+      else if (bank[i - 1].closing !== undefined && bank[i].opening !== undefined && bank[i - 1].closing !== bank[i].opening) gaps.push(`balance doesn't carry over between ${niceShort(bank[i - 1].period.end)} and ${niceShort(bank[i].period.start)}`);
+    }
+  });
   return { months, rows, missing, gaps };
 }
 
 export function renderData() {
   const el = $('#view-data');
-  const cov = S.statements.length ? coverage() : null;
+  const list = inScope();
+  const cov = S.statements.length ? coverage(list) : null;
   const repays = S.txns.filter(t => t.repayStatus).slice(-6).reverse();
   const lastIsa = S.isa[S.isa.length - 1], lastPen = S.pension[S.pension.length - 1];
   const badge = c => ({ ok: '<span class="cell ok">✓</span>', chk: '<span class="cell chk">⚠</span>', miss: '<span class="cell miss">✗</span>', due: '<span class="cell na">·</span>' })[c];
-  const groups = [['santander', 'Joint account (Santander)'], ['amex', 'Amex'], ['tesco', 'Tesco credit card'], ['payslip', 'Payslips'], ['moneyfarm', 'Moneyfarm ISA'], ['aviva', 'Pension']];
+  const groups = [['santander', 'Joint account (Santander)'], ['monzo', 'Monzo personal account'], ['amex', 'Amex'], ['tesco', 'Tesco credit card'], ['payslip', 'Payslips'], ['moneyfarm', 'Moneyfarm ISA'], ['aviva', 'Pension']];
   el.innerHTML = `
+    ${scopeBar()}
     <h2>Add statements</h2>
     <div class="card stack">
       <button class="btn" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add PDFs</button>
@@ -47,7 +62,7 @@ export function renderData() {
     ${repays.length ? `<h2>Card repayments from the joint account</h2><div class="card"><ul class="list">${repays.map(t => `<li class="tap" data-act="txn" data-v="${t.key}"><div class="who"><b>${/AMERICAN EXP|AMEX/i.test(t.desc) ? 'Amex' : 'Tesco'} · paid ${niceShort(t.date)}</b><span>${t.repayStatus === 'matched' ? 'matches the card statement balance' : t.repayStatus === 'covered' ? 'card statements loaded, no exact balance match' : 'no card statement yet: counted as spending'}</span></div><span class="${t.repayStatus === 'matched' ? 'in' : t.repayStatus === 'covered' ? 'muted' : 'out'}">${gbp(-t.amount)} ${t.repayStatus === 'matched' ? '✓' : '?'}</span></li>`).join('')}</ul></div>` : ''}` : ''}
 
     ${S.ignored.length ? `<div class="card small"><span class="muted">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app and left out when you add PDFs.</span> <button class="btn ghost slim" data-act="unignore">Use them again</button></div>` : ''}
-    ${groups.map(([type, label]) => { const list = S.statements.filter(s => s.type === type).slice().reverse(); return list.length ? `<h2>${label} (${list.length})</h2>
+    ${groups.map(([type, label]) => { const list = inScope().filter(s => s.type === type).slice().reverse(); return list.length ? `<h2>${label} (${list.length})</h2>
     <div class="card"><ul class="list">${list.map(s => `<li><div class="who"><b>${s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end))}</b><span>${esc(s.name)}${s.count ? ' · ' + s.count + ' transactions' : ''}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}</div><span class="${s.ok ? 'in' : 'out'}">${s.ok ? '✓' : '⚠'}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`).join('')}</ul></div>` : ''; }).join('')}
     ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div>${s.id ? `<button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${S.txns.length && !S.demo ? `<div class="card notice good small"><b>Saved on this phone, encrypted${S.meta && S.meta.mode === 'pin' ? ' and locked with your passcode' : ''}.</b> The statement PDFs themselves are never saved.</div>` : ''}`;
