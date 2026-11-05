@@ -70,7 +70,7 @@
       const re = /(?:transaction details|paid in|paid out|money in|money out|payments? in|payments? out|balance|description|details|date|amount|credits?|debits?)/gi;
       let m; const found = [];
       while ((m = re.exec(c.str))) found.push(m);
-      if (found.length >= 2) found.forEach(m => out.push({ role: roleOf(m[0]), str: m[0], x: c.x + c.w * (m.index / c.str.length), w: c.w * (m[0].length / c.str.length) }));
+      if (found.length >= 2 && c.str.replace(new RegExp(re.source, 'gi'), '').replace(/[\s£()\/&,-]/g, '').length <= 2) found.forEach(m => out.push({ role: roleOf(m[0]), str: m[0], x: c.x + c.w * (m.index / c.str.length), w: c.w * (m[0].length / c.str.length) }));
     });
     const roles = out.filter(c => c.role);
     const amt = roles.filter(c => ['in', 'out', 'amt', 'bal'].includes(c.role)).length;
@@ -130,10 +130,10 @@
     return best;
   }
   const LABELS = {
-    opening: /(?:opening balance|previous balance|balance brought forward|brought forward|start balance|balance at start|your previous balance|last statement balance|balance b\/f)/i,
-    closing: /(?:closing balance|new balance|statement balance|balance carried forward|carried forward|end balance|balance at (?:close|end)|balance c\/f)/i,
-    totalIn: /(?:total (?:money |paid |payments? )?in\b|payments? in\b|total credits|total deposits|money in|paid in|payments? received|credits)/i,
-    totalOut: /(?:total (?:money |paid |payments? )?out\b|payments? out\b|total debits|total withdrawals|money out|paid out|withdrawn|total purchases|purchases)/i,
+    opening: /(?:opening balance|previous closing balance|previous statement balance|previous balance|balance brought forward|brought forward|start balance|balance at start|your previous balance|last statement balance|balance b\/f)/i,
+    closing: /(?:(?<!previous )closing balance|new balance|statement balance|balance carried forward|carried forward|end balance|balance at (?:close|end)|balance c\/f)/i,
+    totalIn: /(?:total (?:money |paid |payments? )?in\b|payments? in\b|total credits|total deposits|money in|paid in|new credits|payments? received)/i,
+    totalOut: /(?:total (?:money |paid |payments? )?out\b|payments? out\b|total debits|total withdrawals|money out|paid out|withdrawn|new debits)/i,
   };
   const SQUASHED = Object.fromEntries(Object.entries(LABELS).map(([k, re]) => [k, new RegExp(re.source.replace(/ /g, ''), 'i')]));
   /** Printed figures: the first amount after the label on the same row, or directly under it. */
@@ -159,7 +159,7 @@
   }
 
   // ---------------------------------------------------------------- main
-  const MARKER = /(?:brought|carried) forward|opening balance|closing balance|start balance|end balance|balance b\/f|balance c\/f/i;
+  const MARKER = /(?:brought|carried) forward|opening balance|closing balance|start balance|end balance|new balance|previous balance|balance b\/f|balance c\/f/i;
 
   /** Walk the rows once under one reading of how undated rows behave.
    *  strict: a row without a date only continues the transaction above it.
@@ -192,6 +192,11 @@
         return bd <= 45 ? best : null;
       };
       const place = (t, c) => {
+        if (/^(?:CR|DR)$/i.test(c.str) && (t.amt != null || t.in != null || t.out != null)) { t.mark = c.str.toUpperCase(); return; }
+        if (!t.parts.length && !isAmount(c.str)) { // a second date (posting date) or a bare reference number straight after the date is not description
+          const d2 = dateIn(c.str); if (d2 && d2.len === c.str.length) return;
+          if (/^\d{6,}$/.test(c.str) && !t.refSkipped) { t.refSkipped = true; return; }
+        }
         if (isAmount(c.str)) {
           const col = nearest(c);
           if (col) { const a = amountOf(c.str); if (t[col.role] == null) { t[col.role] = a.v; if (a.mark) t.mark = a.mark; } return; }
@@ -202,19 +207,21 @@
       if (r.cells.some(c => c.x > rightEdge)) r = Object.assign({}, r, { cells: r.cells.filter(c => c.x <= rightEdge) });
       if (!r.cells.length) continue;
       const first = r.cells[0];
+      if (/^(?:sub-?total\b|total\b|page \d|continued\b)/i.test(r.cells.filter(c => !dateIn(c.str) || dateIn(c.str).len < c.str.length)[0] ? r.cells.filter(c => !dateIn(c.str) || dateIn(c.str).len < c.str.length)[0].str : '')) { cur = null; continue; }
       const dateRight = descCol && descCol.x > dateCol.x ? descCol.x - 5 : dateCol.x + 60; // a date-looking line in the description column is still description
       const dt = first && first.x < dateRight && dateIn(first.str);
       if (MARKER.test(r.text) && r.cells.length <= 4) {
         if (dt) lastDate = dt;
         const bal = r.cells.filter(c => isAmount(c.str)).pop();
-        if (bal) raw.push({ marker: /carried|closing|end/i.test(r.text) ? 'closing' : 'opening', bal: amountOf(bal.str).v, table: tableNo });
+        if (bal) raw.push({ marker: /carried|closing|end|new balance/i.test(r.text) ? 'closing' : 'opening', bal: amountOf(bal.str).v, table: tableNo });
         cur = null; continue;
       }
       const fresh = date => { cur = { date, parts: [], in: null, out: null, amt: null, bal: null, mark: '', page: r.page, lastY: r.y, table: tableNo }; raw.push(cur); return cur; };
       if (dt) {
         if (gap != null) startGaps.push(gap);
         lastDate = dt; fresh(dt);
-        const rest = first.str.slice(dt.len).trim();
+        let rest = first.str.slice(dt.len).trim();
+        const d2 = rest && dateIn(rest); if (d2 && d2.len < rest.length) rest = rest.slice(d2.len).trim();
         if (rest) cur.parts.push(rest);
         r.cells.slice(1).forEach(c => place(cur, c));
       } else {
@@ -260,6 +267,7 @@
     let best = null, anyTable = false, undated = false;
 
     ['strict', 'amount', 'text'].forEach((mode, level) => {
+      if (process.env.SMART_MODE && process.env.SMART_MODE !== mode) return;
       const sc = scan(rows, mode, period);
       if (!sc.cols) return;
       anyTable = true;
