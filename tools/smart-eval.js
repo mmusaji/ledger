@@ -16,6 +16,18 @@ const PLUGINS = [require(path.join(root, 'readers/monzo.js'))];
 const SM = require(path.join(root, 'readers/smart.js'));
 
 const _log = console.log; console.log = (...a) => { if (typeof a[0] === 'string' && /^Warning:/.test(a[0])) return; _log(...a); };
+// Same as the app's parser.extractPages, plus each item's width (the app's own extractor is left untouched by this experiment).
+async function extractPages(bytes) {
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false }).promise;
+  const pages = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n); const tc = await page.getTextContent();
+    pages.push(tc.items.map(i => ({ str: i.str, x: i.transform[4], y: i.transform[5], w: i.width })));
+    page.cleanup();
+  }
+  await doc.destroy();
+  return pages;
+}
 const args = process.argv.slice(2);
 const flag = (n, v) => { const i = args.indexOf(n); if (i < 0) return v ? null : false; if (v) { const x = args[i + 1]; args.splice(i, 2); return x; } args.splice(i, 1); return true; };
 const details = flag('--details'), jsonOut = flag('--json', true), expectFile = flag('--expect', true);
@@ -34,7 +46,7 @@ function sameTxns(a, b) { const m = new Map(); a.forEach(t => m.set(key(t), (m.g
     const name = path.basename(f), rec = { file: name };
     try {
       const buf = fs.readFileSync(f);
-      const pages = await P.extractPages(pdfjs, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+      const pages = await extractPages(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
       let base = null; try {
         base = RD.readStatement(pages, name);
         if (base.type === 'unsupported') { const lines = P.toLines(pages), all = lines.map(l => l.text).join('\n'); const plug = PLUGINS.find(p => p.detect(all)); if (plug) { base = plug.read(lines, name); base.type = plug.id; (base.txns || []).forEach(t => { t.source = name; }); } }

@@ -75,7 +75,7 @@
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);
       const tc = await page.getTextContent();
-      pages.push(tc.items.map(i => ({ str: i.str, x: i.transform[4], y: i.transform[5], w: i.width })));
+      pages.push(tc.items.map(i => ({ str: i.str, x: i.transform[4], y: i.transform[5] })));
     }
     await doc.destroy();
     return pages;
