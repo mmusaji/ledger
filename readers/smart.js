@@ -248,6 +248,12 @@
     const textAll = rows.map(r => r.text).join('\n');
     const period = findPeriod(textAll);
     const out = { type: 'generic', institution: 'Unknown bank (auto-detected)', name, period, notes, problems, txns: [], confidence: 'failed', ok: false };
+    // A scan (photo/image PDF) has no text layer, so there is nothing to read. Say so plainly instead of calling it a failure.
+    const items = pages.reduce((n, p) => n + p.filter(i => i.str && i.str.trim()).length, 0);
+    if (items < 1.5 * Math.max(1, pages.length)) {
+      problems.push('This PDF is a scan or image with no readable text, so it is not supported. Download the CSV or a text-based PDF from your bank instead.');
+      out.confidence = 'scanned'; return out;
+    }
     const printed = printedFigures(rows);
     // this reader assumes UK statements: day-first dates and pounds. A month-first date (e.g. 07/23/24) or dollar amounts means it would misread days as months.
     const slash = [...textAll.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/g)];

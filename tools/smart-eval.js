@@ -75,9 +75,9 @@ function sameTxns(a, b) { const m = new Map(); a.forEach(t => m.set(key(t), (m.g
     if (details) { console.log('     columns:', (r.smart.columns || []).join(' | '), '· convention:', r.smart.convention || '—', '· checks:', JSON.stringify(r.smart.checks)); (r.smart.problems || []).forEach(p => console.log('     problem:', p)); (r.lines || []).forEach(l => console.log('       ' + l)); }
   });
   const gen = rows.filter(r => r.smart);
-  const sum = { files: rows.length, verified: gen.filter(r => r.smart.confidence === 'verified').length, unverified: gen.filter(r => r.smart.confidence === 'unverified').length, failed: gen.filter(r => r.smart.confidence === 'failed').length };
+  const sum = { files: rows.length, verified: gen.filter(r => r.smart.confidence === 'verified').length, unverified: gen.filter(r => r.smart.confidence === 'unverified').length, failed: gen.filter(r => r.smart.confidence === 'failed').length, scanned: gen.filter(r => r.smart.confidence === 'scanned').length };
   const cmp = rows.filter(r => r.agree && /identical|differs/.test(r.agree));
-  console.log(`\nGeneric reader: ${sum.verified} proved correct, ${sum.unverified} read but unprovable, ${sum.failed} failed, of ${sum.files} PDFs.`);
+  console.log(`\nGeneric reader: ${sum.verified} proved correct, ${sum.unverified} read but unprovable, ${sum.failed} failed, ${sum.scanned} scanned (not supported), of ${sum.files} PDFs.`);
   if (cmp.length) console.log(`Where the app already has a reader: ${cmp.filter(r => r.agree === 'identical').length} of ${cmp.length} give identical transactions.`);
   const ex = rows.filter(r => r.expected); if (ex.length) console.log(`Known-answer fixtures: ${ex.filter(r => r.expected === 'PASS').length} of ${ex.length} pass.`);
   if (jsonOut) fs.writeFileSync(jsonOut, JSON.stringify(rows.map(r => Object.assign({}, r, { lines: undefined })), null, 1));
