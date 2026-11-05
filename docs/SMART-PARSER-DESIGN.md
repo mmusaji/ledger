@@ -29,7 +29,7 @@ Money is whole pence (integers), never floats.
 
 - **False-verified must be zero.** A wrong result that reports "verified" is the one failure that could corrupt data. `failed` and `unverified` are safe outcomes.
 - The generic reader runs **only after every existing reader says "not mine"**. It can never override or replace one.
-- Import only `verified` results, and only after the user confirms a preview (section 5).
+- Import only `verified` results. How and whether the user is asked is open (section 5).
 - A setting turns it off completely. Off by default until the test targets in section 6 are met.
 - Refuse rather than guess: month-first dates, dollars, all-zero placeholder statements, statements whose own summary does not add up.
 - Any exception inside it is caught and treated as "not read"; it must not be able to break the existing import path.
@@ -47,11 +47,21 @@ On a phone, assume 5 to 10 times slower (estimate, not measured). So 40 PDFs / 2
 - **Algorithms:** replace the per-item list scan in row grouping with sort-and-sweep; skip the extra reading passes when the first already verifies and nothing is ambiguous.
 - **Known gap to add:** trailing-minus amounts (`12.34-`).
 
-## 5. User experience (only if built)
+## 5. User experience: deliberately OPEN
 
-After choosing files, anything the existing readers cannot read and the generic reader **proves** is shown as a preview:
-"Read 66 transactions from natwest.pdf, 13 Dec 2023 to 12 Jan 2024, proven against your running balances. Add them?"
-Nothing is saved until the user taps Add. Failed and unverified files are listed with the plain-language reason. No new settings screens beyond one on/off switch.
+Not decided. The screens are out of scope for now, and the owner does not want a confirmation for every file (tedious). Principles to design against later:
+
+- **No per-file confirmation as the normal path.** Friction should scale with risk, not with volume.
+- **Trust comes from proof, not from asking.** Only a statement that proves itself against its own balances/totals is eligible to be added at all; everything else is never added.
+- **Quiet by default, loud only for exceptions.** One summary after a batch ("38 added, 2 need a look") instead of a prompt per file.
+- **Easy to undo rather than hard to confirm.** Anything read this way is tagged as such and can be removed in one tap (the app already has "remove a file" and an ignore list).
+- **Ideas to evaluate when we get there:** a single batch confirmation only the first time a new bank is seen; auto-add once a bank has proven itself on N statements; a small "read automatically" label on those statements; a review list only for `unverified` results.
+
+Decision deferred until the reader's measured reliability (section 6) is known: the better the proof, the less asking is needed.
+
+## 5b. Payslips (to discuss separately)
+
+Payslips have a different shape (labelled pay and deduction lines, not a dated table) but are also provable: earnings add to gross, deductions add to the total, gross minus deductions equals net, year-to-date figures move consistently month to month. The existing Red Hat reader stays as is. A generic payslip reader would be a separate experiment with its own test set; it should not be mixed into the statement reader.
 
 ## 6. Testing plan (the gate before any wiring)
 
@@ -73,5 +83,5 @@ Nothing is saved until the user taps Add. Failed and unverified files are listed
 ## 7. Open questions
 
 - Which banks and cards matter most to you after the ones already supported? (Drives which real samples to collect first.)
-- Is a preview-and-confirm step acceptable for every generic-read file, or only the first from each bank?
+- How little confirmation is acceptable? (see section 5; for example: none once a bank has proven itself, a summary only.)
 - Should a generic-read bank become a named, saved reader once it has verified a few times, or always stay "generic"?
