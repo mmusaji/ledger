@@ -45,10 +45,10 @@
     ['in', /^(?:paid in|money in|credits?|credit amount|deposits?|payments? in|in|credit \(£\)|paid in \(£\)|money in \(£\))$/i],
     ['out', /^(?:paid out|money out|debits?|debit amount|withdrawals?|payments? out|out|debit \(£\)|paid out \(£\)|money out \(£\)|withdrawn)$/i],
     ['amt', /^(?:amount|value)$/i],
-    ['bal', /^(?:balance|running balance|£ ?balance|balance £|balance \(£\)|balance \(gbp\))$/i],
+    ['bal', /^(?:(?:end of day |running |closing )?(?:account )?balance)$/i],
   ];
   const roleOf = s => { const t = s.replace(/\(?(?:£|gbp)\)?/ig, ' ').replace(/\s+/g, ' ').trim(); if (!t) return null; for (const [r, re] of ROLE) if (re.test(t)) return r; return null; };
-  const HEAD_FRAGMENT = /^(?:paid|money|payments?|transaction|trans|balance|amount|credit|debit|value|date|description)$/i;
+  const HEAD_FRAGMENT = /^(?:paid|money|account|end of day|payments?|transaction|trans|balance|amount|credit|debit|value|date|description)$/i;
 
   /** Find the header row of a transaction table: needs a date column and at least two amount-type columns (or one + description). */
   function headerOf(rows, i) {
@@ -107,28 +107,45 @@
   // ---------------------------------------------------------------- statement-level facts
   function findPeriod(text) {
     const D = `(\\d{1,2}(?:st|nd|rd|th)?[ /.-](?:${MON}|\\d{1,2})[ \\/.,-]*\\d{2,4})`;
-    const re = new RegExp(`${D}\\s*(?:to|-|–|until|through)\\s*${D}`, 'i');
-    const m = text.match(re);
-    if (!m) return null;
-    const a = dateIn(m[1]), b = dateIn(m[2]);
-    if (!a || !b || !a.y || !b.y) return null;
-    return { start: iso(a.y, a.m, a.d), end: iso(b.y, b.m, b.d) };
+    let m = text.match(new RegExp(`${D}\\s*(?:to|-|–|until|through)\\s*${D}`, 'i'));
+    if (m) {
+      const a = dateIn(m[1]), b = dateIn(m[2]);
+      if (a && b && a.y && b.y) return { start: iso(a.y, a.m, a.d), end: iso(b.y, b.m, b.d) };
+    }
+    // "1 August to 30 August 2024", "01 - 30 Sep 2022", "1 Sep - 30 Sep 2022": the year is printed once
+    m = text.match(new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(${MON}))?(?:\\s+\\d{4})?\\s*(?:to|-|–|until|through)\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MON})[ ,]+(\\d{4})`, 'i'));
+    if (m) {
+      const em = MONTHS[m[4].slice(0, 3).toLowerCase()], sm = m[2] ? MONTHS[m[2].slice(0, 3).toLowerCase()] : em, ey = +m[5], sy = sm > em ? ey - 1 : ey;
+      return { start: iso(sy, sm, +m[1]), end: iso(ey, em, +m[3]) };
+    }
+    return null;
+  }
+  /** When no period is printed: the statement date, or failing that the latest full date on the statement. */
+  function referenceEnd(text) {
+    const sd = text.match(new RegExp(`(?:statement date|date of statement|statement issued|issue date)[: ]+(\\d{1,2}(?:st|nd|rd|th)?[ /.-](?:${MON}|\\d{1,2})[ \\/.,-]*\\d{2,4})`, 'i'));
+    if (sd) { const d = dateIn(sd[1]); if (d && d.y) return iso(d.y, d.m, d.d); }
+    let best = null;
+    const re = new RegExp(`\\b(\\d{1,2}(?:st|nd|rd|th)?[ /.-](?:${MON}|\\d{1,2})[ \\/.,-]*\\d{4})\\b`, 'gi'); let m;
+    while ((m = re.exec(text))) { const d = dateIn(m[1]); if (d && d.y) { const v = iso(d.y, d.m, d.d); if (!best || v > best) best = v; } }
+    return best;
   }
   const LABELS = {
     opening: /(?:opening balance|previous balance|balance brought forward|brought forward|start balance|balance at start|your previous balance|last statement balance|balance b\/f)/i,
     closing: /(?:closing balance|new balance|statement balance|balance carried forward|carried forward|end balance|balance at (?:close|end)|balance c\/f)/i,
-    totalIn: /(?:total (?:money |paid |payments? )?in\b|total credits|total deposits|money in|paid in|payments? received|credits)/i,
-    totalOut: /(?:total (?:money |paid |payments? )?out\b|total debits|total withdrawals|money out|paid out|withdrawn|total purchases|purchases)/i,
+    totalIn: /(?:total (?:money |paid |payments? )?in\b|payments? in\b|total credits|total deposits|money in|paid in|payments? received|credits)/i,
+    totalOut: /(?:total (?:money |paid |payments? )?out\b|payments? out\b|total debits|total withdrawals|money out|paid out|withdrawn|total purchases|purchases)/i,
   };
+  const SQUASHED = Object.fromEntries(Object.entries(LABELS).map(([k, re]) => [k, new RegExp(re.source.replace(/ /g, ''), 'i')]));
   /** Printed figures: the first amount after the label on the same row, or directly under it. */
   function printedFigures(rows) {
     const out = {};
     rows.forEach((r, i) => {
       for (const k of Object.keys(LABELS)) {
         if (out[k] != null) continue;
-        const m = LABELS[k].exec(r.text);
+        let m = LABELS[k].exec(r.text), txt = r.text;
+        if (!m) { txt = r.text.replace(/\s+/g, ''); m = SQUASHED[k].exec(txt); } // some PDFs split words ("Clos ing Balance", "23,235.1 5")
         if (!m) continue;
-        const rest = r.text.slice(m.index + m[0].length);
+        const rest = txt.slice(m.index + m[0].length);
         const hit = rest.match(/^.{0,45}?(-?\s?£?\s?-?[\d,]*\d\.\d{2})\s*(CR|DR)?/);
         if (hit) { out[k] = amountOf(hit[1] + (hit[2] || '')); continue; }
         const under = rows[i + 1];
@@ -154,12 +171,17 @@
     let prevY = null, prevPage = -1;
     const done = t => t && (t.in != null || t.out != null || t.amt != null);
     for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
+      let r = rows[i];
       const gap = prevPage === r.page && prevY != null ? prevY - r.y : null; prevY = r.y; prevPage = r.page;
       const h = headerOf(rows, i);
       if (h) { cols = h.cols; cur = null; tableNo++; if (h.skip) skipRows.add(i + 1); columns = cols.map(c => c.role); continue; }
       if (skipRows.has(i) || !cols) continue;
-      const dateCol = cols.find(c => c.role === 'date'), descCol = cols.find(c => c.role === 'desc');
+      const dateCol = cols.find(c => c.role === 'date'); let descCol = cols.find(c => c.role === 'desc');
+      if (!descCol) { // header words were split or unusual: the description starts at the first text after the date column
+        const firstAmt = Math.min(...cols.filter(c => ['in', 'out', 'amt', 'bal'].includes(c.role)).map(c => c.x));
+        const xs = rows.slice(i, i + 40).filter(q => q.page === r.page).flatMap(q => q.cells.filter(c => c.x > dateCol.x + dateCol.w + 2 && c.x < firstAmt - 20 && !isAmount(c.str) && !dateIn(c.str)).map(c => c.x));
+        descCol = { role: 'desc', x: xs.length ? Math.min(...xs) : dateCol.x + dateCol.w + 8, w: 0 };
+      }
       const amtCols = cols.filter(c => ['in', 'out', 'amt', 'bal'].includes(c.role));
       const nearest = c => { // which amount column a numeric cell belongs to
         let best = null, bd = 1e9;
@@ -176,6 +198,9 @@
         }
         t.parts.push(c.str);
       };
+      const rightEdge = Math.max(...amtCols.map(c => c.x + c.w)) + 25; // notices printed beside the table are not part of it
+      if (r.cells.some(c => c.x > rightEdge)) r = Object.assign({}, r, { cells: r.cells.filter(c => c.x <= rightEdge) });
+      if (!r.cells.length) continue;
       const first = r.cells[0];
       const dateRight = descCol && descCol.x > dateCol.x ? descCol.x - 5 : dateCol.x + 60; // a date-looking line in the description column is still description
       const dt = first && first.x < dateRight && dateIn(first.str);
@@ -217,11 +242,17 @@
     const period = findPeriod(textAll);
     const out = { type: 'generic', institution: 'Unknown bank (auto-detected)', name, period, notes, problems, txns: [], confidence: 'failed', ok: false };
     const printed = printedFigures(rows);
+    // this reader assumes UK statements: day-first dates and pounds. A month-first date (e.g. 07/23/24) or dollar amounts means it would misread days as months.
+    const slash = [...textAll.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/g)];
+    const monthFirst = slash.some(m => +m[2] > 12) && !slash.some(m => +m[1] > 12);
+    const dollars = (textAll.match(/\$\s?[\d,]+\.\d{2}/g) || []).length, pounds = (textAll.match(/£\s?[\d,]+\.\d{2}/g) || []).length;
+    if (monthFirst || dollars > pounds + 5) { problems.push('Not a UK-style statement (month-first dates or dollar amounts), so it is not read: day and month could be swapped.'); out.confidence = 'failed'; return out; }
 
+    const refEnd = period ? period.end : referenceEnd(textAll);
     const yearOf = d => {
       if (d.y) return d.y;
-      if (!period) return null;
-      const ey = +period.end.slice(0, 4), em = +period.end.slice(5, 7) - 1;
+      if (!refEnd) return null;
+      const ey = +refEnd.slice(0, 4), em = +refEnd.slice(5, 7) - 1;
       return d.m > em + 1 ? ey - 1 : ey;
     };
     const credit = /payment received|thank you|refund|cashback|reversal|credit adjustment/i;
@@ -271,11 +302,12 @@
       });
     });
     if (!anyTable) { problems.push('No transaction table found (no header row with a date column and amount columns).'); return out; }
-    if (!best) { problems.push('A table was found but its dates have no year and no statement period was found to place them in.'); return out; }
+    if (!best) { problems.push('A table was found but its dates have no year and no statement period or date was found to place them in.'); return out; }
     out.columns = best.sc.columns; out.rows = best.tx.length; out.undatedRows = best.mode;
     out.txns = best.tx.map(t => ({ date: t.date, desc: t.desc, amount: t.amount, balance: t.bal, payee: t.desc.slice(0, 40) }));
     out.checks = best.res.checks; out.convention = best.h.name; out.confidence = best.res.confidence;
     out.opening = best.pr.opening ? best.pr.opening.v : null; out.closing = best.pr.closing ? best.pr.closing.v : null;
+    if (best.res.confidence === 'verified' && !best.tx.some(t => t.amount !== 0)) { best.res.confidence = 'failed'; best.res.msgs.push('Every amount read as zero, so the arithmetic proves nothing (placeholder or blank statement?).'); out.confidence = 'failed'; }
     out.ok = best.res.confidence === 'verified';
     if (best.res.confidence === 'failed') problems.push(...best.res.msgs);
     if (best.res.confidence === 'unverified') notes.push('Nothing on the statement could be used to prove these figures (no running balance or printed totals found).');
@@ -313,6 +345,10 @@
       const ok = tin === Math.abs(printed.totalIn.v) && tout === Math.abs(printed.totalOut.v);
       checks.inout = { ok, tin, tout, msg: `Money in/out read as ${tin}/${tout}, statement says ${Math.abs(printed.totalIn.v)}/${Math.abs(printed.totalOut.v)}` };
       if (ok) passed++; else { failed++; msgs.push(checks.inout.msg); }
+    }
+    if (printed.opening && printed.closing && printed.totalIn && printed.totalOut) {
+      const implied = printed.opening.v + Math.abs(printed.totalIn.v) * (card ? -1 : 1) - Math.abs(printed.totalOut.v) * (card ? -1 : 1), diff = implied - printed.closing.v;
+      if (diff !== 0) { checks.summary = { ok: false, diff, msg: `The statement's own summary does not add up: opening ${printed.opening.v} + in − out = ${implied}, but it prints closing ${printed.closing.v} (difference ${diff} pence)` }; failed++; msgs.push(checks.summary.msg); }
     }
     const confidence = failed ? 'failed' : passed ? 'verified' : 'unverified';
     return { checks, msgs, confidence, score: passed * 10 - failed * 10 + (tx.length ? 1 : 0) };

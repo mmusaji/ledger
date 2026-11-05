@@ -466,6 +466,9 @@
   ],
   "closing": null
  },
+ "J_us_month_first_must_fail": {
+  "expect": "not verified"
+ },
  "G_tampered_must_fail": {
   "expect": "not verified"
  },

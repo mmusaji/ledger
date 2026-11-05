@@ -11,7 +11,8 @@ let pdfjs; try { pdfjs = require(path.join(root, 'vendor/pdf.min.js')); } catch 
 if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = path.join(root, 'vendor/pdf.worker.min.js');
 const P = require(path.join(root, 'parser.js'));
 const RD = require(path.join(root, 'readers.js'));
-require(path.join(root, 'readers/monzo.js'));
+// plug-in readers export themselves under Node instead of registering with the dispatcher, so the harness plays the dispatcher's part for them
+const PLUGINS = [require(path.join(root, 'readers/monzo.js'))];
 const SM = require(path.join(root, 'readers/smart.js'));
 
 const _log = console.log; console.log = (...a) => { if (typeof a[0] === 'string' && /^Warning:/.test(a[0])) return; _log(...a); };
@@ -34,7 +35,10 @@ function sameTxns(a, b) { const m = new Map(); a.forEach(t => m.set(key(t), (m.g
     try {
       const buf = fs.readFileSync(f);
       const pages = await P.extractPages(pdfjs, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
-      let base = null; try { base = RD.readStatement(pages, name); } catch (e) { base = { type: 'error', problems: [e.message], txns: [] }; }
+      let base = null; try {
+        base = RD.readStatement(pages, name);
+        if (base.type === 'unsupported') { const lines = P.toLines(pages), all = lines.map(l => l.text).join('\n'); const plug = PLUGINS.find(p => p.detect(all)); if (plug) { base = plug.read(lines, name); base.type = plug.id; (base.txns || []).forEach(t => { t.source = name; }); } }
+      } catch (e) { base = { type: 'error', problems: [e.message], txns: [] }; }
       const sm = SM.read(pages, name);
       const bt = base.txns || [], st = sm.txns || [];
       Object.assign(rec, {

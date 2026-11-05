@@ -145,6 +145,14 @@ U = [('2023-12-14','SHOP ONE',-2762),('2023-12-14','CAFE TWO',-540),('2023-12-15
 make_undated('I_date_once_per_day_two_line_descriptions', U, 1025044)
 EXP['I_date_once_per_day_two_line_descriptions'] = {'txns': [[d, a] for d, _, a in U], 'closing': None}
 
+# J: US statement (dollars, month-first dates) must not be read as UK
+UStx = [('2024-07-23','GROCERY STORE',-5321),('2024-07-24','GAS STATION',-4010),('2024-07-25','PAYROLL DEPOSIT',250000),('2024-07-26','RESTAURANT',-3875)]
+def d_us(d): return f"{d[5:7]}/{d[8:10]}/{d[2:4]}"
+b = 100000; rows = []
+for d, desc, a in UStx: b += a; rows.append({'cells': {'date': d_us(d), 'desc': desc, 'amt': ('-' if a < 0 else '') + '$' + money(a), 'bal': '$' + money(b)}})
+make('J_us_month_first_must_fail', ['Date','Description','Amount','Balance'], [('date',40,100),('desc',110,330),('amt',340,430),('bal',440,540)], rows, pre=['Your checking statement for July 23, 2024 to August 21, 2024'])
+EXP['J_us_month_first_must_fail'] = {'expect': 'not verified'}
+
 # G: tampered balance (one amount wrong) -> must NOT verify
 rows = [{'cells': {'date': d_slash(d), 'desc': desc, 'amt': ('-' if a < 0 else '') + '£' + money(a), 'bal': '£' + money(b + (500 if i == 5 else 0))}} for i, (d, desc, a, b) in enumerate(R)]
 make('G_tampered_must_fail', ['Date','Description','Amount','Balance'], [('date',40,100),('desc',110,330),('amt',340,430),('bal',440,540)], rows, pre=['Statement period 01/03/2026 to 31/03/2026'])
