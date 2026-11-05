@@ -63,6 +63,28 @@ Decision deferred until the reader's measured reliability (section 6) is known: 
 
 Payslips have a different shape (labelled pay and deduction lines, not a dated table) but are also provable: earnings add to gross, deductions add to the total, gross minus deductions equals net, year-to-date figures move consistently month to month. The existing Red Hat reader stays as is. A generic payslip reader would be a separate experiment with its own test set; it should not be mixed into the statement reader.
 
+## 5c. Upload routing and the CSV reader (agreed direction, not built)
+
+**Routing.** One upload box. The file type is detected from the file itself (the `%PDF` header or the content, not just the extension), then sent to the right reader:
+
+| file | route |
+|---|---|
+| PDF with a text layer | existing readers first, then the generic PDF reader (verified results only) |
+| PDF with no text (scan) | rejected, labelled "scanned, not supported" |
+| CSV | CSV reader (below) |
+
+**A PDF that cannot be read correctly is not kept.** If no reader can produce a verified result, nothing is stored, the file is not retained, and the user sees one plain message: this statement could not be read reliably, so please download the CSV version of the same statement from your bank and upload that. A scan gets the same message, saying it is a scan. No partial results are added.
+
+**CSV reader (own plug-in file, same contract `{id, detect, read}`).**
+- Detect: delimiter (comma, semicolon, tab), quoting and encoding (UTF-8 with or without BOM), then a header row of known words (Date, Description/Details/Memo/Reference, Amount, Paid in/out, Money in/out, Debit/Credit, Balance).
+- Columns map by header words, never by position, so a bank adding a column does not break it.
+- Dates are day-first only; an ambiguous or month-first file is refused, as in the PDF reader. Amounts use whole pence and accept the usual forms (brackets, trailing minus, CR/DR, thousands commas, a leading £).
+- Proof: the same running-balance chain when a Balance column exists; otherwise the file is "unverified" and shows a warning rather than being silently trusted. Where a CSV has no balance column, check for an exact duplicate export (same file read twice).
+- Never trust a quoted or formula-like cell (`=`, `+`, `@`): treat everything as text.
+- Needs real exports to test. Collecting a few from each major bank comes first; fixtures are then generated from the same shapes.
+
+**Status:** CSV exports for testing to be supplied by the user. No code yet.
+
 ## 6. Testing plan (the gate before any wiring)
 
 1. **Real layouts:** keep growing `SampleStatementsForTesting` with real UK banks and cards (older and newer layouts). Report: verified / failed per file, and identical-to-existing-reader for the four we have readers for (currently 4 of 4 identical).
