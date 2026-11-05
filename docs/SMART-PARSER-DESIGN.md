@@ -83,7 +83,7 @@ Payslips have a different shape (labelled pay and deduction lines, not a dated t
 - Never trust a quoted or formula-like cell (`=`, `+`, `@`): treat everything as text.
 - Needs real exports to test. Collecting a few from each major bank comes first; fixtures are then generated from the same shapes.
 
-**Status:** CSV exports for testing to be supplied by the user. No code yet.
+**Status:** `readers/csv.js` and a ~200-file synthetic test suite exist on the branch (see `tests/csv/README.md`). Real CSV exports from the user are still needed.
 
 ## 6. Testing plan (the gate before any wiring)
 

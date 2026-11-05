@@ -1,0 +1,52 @@
+{
+ "statementsUsed": 9,
+ "cardStatements": 3,
+ "rowsPerStatement": [
+  4,
+  7,
+  25,
+  27,
+  32,
+  37,
+  42,
+  50,
+  66
+ ],
+ "outDeciles": [
+  400,
+  850,
+  1500,
+  2050,
+  3150,
+  4000,
+  5000,
+  9150,
+  20000
+ ],
+ "inDeciles": [
+  2000,
+  5000,
+  10000,
+  12000,
+  25000,
+  50000,
+  60000,
+  125000,
+  153950
+ ],
+ "shareIn": 0.12758620689655173,
+ "rowsPerActiveDay": 1.821524103468548,
+ "genericWords": {
+  "SO": 6,
+  "FASTER PAYMENT": 17,
+  "TRANSFER": 7,
+  "DD": 11,
+  "DIRECT DEBIT": 30,
+  "CARD PAYMENT": 27,
+  "ATM": 1,
+  "CASH": 2,
+  "SALARY": 1,
+  "STANDING ORDER": 7,
+  "POS": 1
+ }
+}
