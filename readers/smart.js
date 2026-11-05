@@ -118,7 +118,7 @@
     opening: /(?:opening balance|previous balance|balance brought forward|brought forward|start balance|balance at start|your previous balance|last statement balance|balance b\/f)/i,
     closing: /(?:closing balance|new balance|statement balance|balance carried forward|carried forward|end balance|balance at (?:close|end)|balance c\/f)/i,
     totalIn: /(?:total (?:money |paid |payments? )?in\b|total credits|total deposits|money in|paid in|payments? received|credits)/i,
-    totalOut: /(?:total (?:money |paid |payments? )?out\b|total debits|total withdrawals|money out|paid out|total purchases|purchases)/i,
+    totalOut: /(?:total (?:money |paid |payments? )?out\b|total debits|total withdrawals|money out|paid out|withdrawn|total purchases|purchases)/i,
   };
   /** Printed figures: the first amount after the label on the same row, or directly under it. */
   function printedFigures(rows) {
@@ -142,19 +142,22 @@
   }
 
   // ---------------------------------------------------------------- main
-  function read(pages, name) {
-    const rows = toRows(pages);
-    const notes = [], problems = [];
-    const textAll = rows.map(r => r.text).join('\n');
-    const period = findPeriod(textAll);
-    const out = { type: 'generic', institution: 'Unknown bank (auto-detected)', name, period, notes, problems, txns: [], confidence: 'failed', ok: false };
+  const MARKER = /(?:brought|carried) forward|opening balance|closing balance|start balance|end balance|balance b\/f|balance c\/f/i;
 
-    // 1. walk the rows, switching column layout at each header row
-    let cols = null, cur = null, tableNo = 0; const raw = []; const skipRows = new Set();
+  /** Walk the rows once under one reading of how undated rows behave.
+   *  strict: a row without a date only continues the transaction above it.
+   *  amount: a row without a date that carries its own amounts, under a finished transaction, is a new transaction on the same date (statements that print the date once per day).
+   *  text:   additionally, a text-only row under a finished transaction starts a new one. */
+  function scan(rows, mode, period) {
+    let cols = null, cur = null, tableNo = 0, lastDate = null, columns = null;
+    const raw = [], skipRows = new Set(), startGaps = [], contGaps = [];
+    let prevY = null, prevPage = -1;
+    const done = t => t && (t.in != null || t.out != null || t.amt != null);
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
+      const gap = prevPage === r.page && prevY != null ? prevY - r.y : null; prevY = r.y; prevPage = r.page;
       const h = headerOf(rows, i);
-      if (h) { cols = h.cols; cur = null; tableNo++; if (h.skip) skipRows.add(i + 1); out.columns = cols.map(c => c.role); continue; }
+      if (h) { cols = h.cols; cur = null; tableNo++; if (h.skip) skipRows.add(i + 1); columns = cols.map(c => c.role); continue; }
       if (skipRows.has(i) || !cols) continue;
       const dateCol = cols.find(c => c.role === 'date'), descCol = cols.find(c => c.role === 'desc');
       const amtCols = cols.filter(c => ['in', 'out', 'amt', 'bal'].includes(c.role));
@@ -166,88 +169,117 @@
         });
         return bd <= 45 ? best : null;
       };
-      const first = r.cells[0];
-      const dateRight = descCol && descCol.x > dateCol.x ? descCol.x - 5 : dateCol.x + 60; // a date-looking line in the description column is still description
-      const dt = first && first.x < dateRight && dateIn(first.str);
-      if (/^(?:balance (?:brought|carried) forward|opening balance|closing balance|brought forward|carried forward|start balance|end balance|balance b\/f|balance c\/f)/i.test((dt ? first.str.slice(dt.len) : r.text).trim()) || /(?:brought|carried) forward|opening balance|closing balance/i.test(r.text)) {
-        const bal = r.cells.filter(c => isAmount(c.str)).pop();
-        if (bal) raw.push({ marker: /carried|closing|end/i.test(r.text) ? 'closing' : 'opening', bal: amountOf(bal.str).v });
-        cur = null; continue;
-      }
-      if (dt) {
-        cur = { date: dt, parts: [], in: null, out: null, amt: null, bal: null, mark: '', page: r.page, lastY: r.y, table: tableNo };
-        raw.push(cur);
-        const rest = first.str.slice(dt.len).trim();
-        if (rest) cur.parts.push(rest);
-        r.cells.slice(1).forEach(c => place(cur, c));
-      } else if (cur) {
-        // a continuation line sits right under its transaction; anything further away (footer, notes) is not part of it
-        const near = r.page === cur.page ? cur.lastY - r.y <= 20 : true;
-        if (near) r.cells.forEach(c => place(cur, c)); else cur = null;
-      }
-      if (cur) cur.lastY = r.y;
-      function place(t, c) {
+      const place = (t, c) => {
         if (isAmount(c.str)) {
           const col = nearest(c);
           if (col) { const a = amountOf(c.str); if (t[col.role] == null) { t[col.role] = a.v; if (a.mark) t.mark = a.mark; } return; }
         }
         t.parts.push(c.str);
+      };
+      const first = r.cells[0];
+      const dateRight = descCol && descCol.x > dateCol.x ? descCol.x - 5 : dateCol.x + 60; // a date-looking line in the description column is still description
+      const dt = first && first.x < dateRight && dateIn(first.str);
+      if (MARKER.test(r.text) && r.cells.length <= 4) {
+        if (dt) lastDate = dt;
+        const bal = r.cells.filter(c => isAmount(c.str)).pop();
+        if (bal) raw.push({ marker: /carried|closing|end/i.test(r.text) ? 'closing' : 'opening', bal: amountOf(bal.str).v, table: tableNo });
+        cur = null; continue;
       }
+      const fresh = date => { cur = { date, parts: [], in: null, out: null, amt: null, bal: null, mark: '', page: r.page, lastY: r.y, table: tableNo }; raw.push(cur); return cur; };
+      if (dt) {
+        if (gap != null) startGaps.push(gap);
+        lastDate = dt; fresh(dt);
+        const rest = first.str.slice(dt.len).trim();
+        if (rest) cur.parts.push(rest);
+        r.cells.slice(1).forEach(c => place(cur, c));
+      } else {
+        const hasAmt = r.cells.some(c => isAmount(c.str) && nearest(c) && nearest(c).role !== 'bal');
+        const startsInDesc = first && descCol && first.x >= descCol.x - 5 && first.x < descCol.x + 40 && !isAmount(first.str);
+        const near = cur && (r.page !== cur.page || cur.lastY - r.y <= 20);
+        if (mode !== 'strict' && lastDate && startsInDesc && (!cur || !near || (done(cur) && (hasAmt || mode === 'text')))) {
+          if (gap != null) startGaps.push(gap);
+          fresh(lastDate); r.cells.forEach(c => place(cur, c));
+        } else if (cur && near) { if (gap != null) contGaps.push(gap); r.cells.forEach(c => place(cur, c)); }
+        else cur = null; // footer, notes, anything not under a transaction
+      }
+      if (cur) cur.lastY = r.y;
     }
-    if (!cols) { problems.push('No transaction table found (no header row with a date column and amount columns).'); return out; }
+    const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+    // in a correct reading, the line spacing before a new transaction is not smaller than before a continuation line
+    const spacing = startGaps.length > 2 && contGaps.length > 2 ? Math.max(-4, Math.min(4, mean(startGaps) - mean(contGaps))) / 4 : 0;
+    return { raw, cols, columns, spacing };
+  }
 
-    // 2. build signed transactions
-    const hasInOut = cols.some(c => c.role === 'in') || cols.some(c => c.role === 'out');
-    const items = raw.filter(t => t.date);
-    const markers = raw.filter(t => t.marker);
-    const yearOf = (d) => {
+  function read(pages, name) {
+    const rows = toRows(pages);
+    const notes = [], problems = [];
+    const textAll = rows.map(r => r.text).join('\n');
+    const period = findPeriod(textAll);
+    const out = { type: 'generic', institution: 'Unknown bank (auto-detected)', name, period, notes, problems, txns: [], confidence: 'failed', ok: false };
+    const printed = printedFigures(rows);
+
+    const yearOf = d => {
       if (d.y) return d.y;
-      const ref = period ? period.end : null;
-      if (!ref) return null;
-      const ey = +ref.slice(0, 4), em = +ref.slice(5, 7) - 1;
+      if (!period) return null;
+      const ey = +period.end.slice(0, 4), em = +period.end.slice(5, 7) - 1;
       return d.m > em + 1 ? ey - 1 : ey;
     };
-    const draft = items.map(t => {
-      const y = yearOf(t.date);
-      return { date: y ? iso(y, t.date.m, t.date.d) : null, desc: t.parts.join(' ').replace(/\s+/g, ' ').trim(), _in: t.in, _out: t.out, _amt: t.amt, bal: t.bal, mark: t.mark, table: t.table };
-    });
-    if (draft.some(t => !t.date)) { problems.push('Dates have no year and no statement period was found to place them in.'); return out; }
-    draft.forEach(t => {
-      if (hasInOut) t.amount = (t._in != null ? Math.abs(t._in) : 0) - (t._out != null ? Math.abs(t._out) : 0);
-      else t.amount = t._amt == null ? 0 : t._amt;
-    });
-    out.rows = draft.length;
-    const printed = printedFigures(rows);
-    const opening = markers.find(m => m.marker === 'opening');
-    const closing = markers.slice().reverse().find(m => m.marker === 'closing');
-    if (opening && !printed.opening) printed.opening = { v: opening.bal };
-    if (closing && !printed.closing) printed.closing = { v: closing.bal };
+    const credit = /payment received|thank you|refund|cashback|reversal|credit adjustment/i;
+    const cardWords = /credit limit|minimum payment|previous balance|new balance|payments? and credits|credit card/i.test(textAll);
+    let best = null, anyTable = false, undated = false;
 
-    // 3. sign conventions are hypotheses, each tested against the statement's own arithmetic
-    const hyps = [];
-    if (hasInOut) hyps.push({ name: 'in/out columns', f: t => t.amount });
-    else {
-      hyps.push({ name: 'bank: amounts signed as printed', f: t => t.mark === 'CR' ? Math.abs(t._amt) : t.mark === 'DR' ? -Math.abs(t._amt) : t._amt });
-      hyps.push({ name: 'card: printed amounts are spend, CR or minus is a credit', card: true, f: t => t.mark === 'CR' ? Math.abs(t._amt) : -t._amt });
-    }
-    let best = null;
-    hyps.forEach(h => {
-      const tx = draft.map(t => Object.assign({}, t, { amount: h.f(t) }));
-      const res = verify(tx, printed, !!cols.find(c => c.role === 'bal'), !!h.card);
-      // arithmetic cannot tell a card from a bank when the totals are symmetric, so wording breaks ties
-      const credit = /payment received|thank you|refund|cashback|reversal|credit adjustment/i;
-      const sem = tx.reduce((s, t) => s + (credit.test(t.desc) ? (t.amount > 0 ? 1 : -1) : 0), 0);
-      const cardWords = /credit limit|minimum payment|previous balance|new balance|payments? and credits|credit card/i.test(textAll);
-      res.score += Math.max(-3, Math.min(3, sem)) * 0.5 + (h.card && cardWords ? 1 : 0) + (!h.card && cardWords ? -1 : 0);
-      if (!best || res.score > best.res.score) best = { h, tx, res };
+    ['strict', 'amount', 'text'].forEach((mode, level) => {
+      const sc = scan(rows, mode, period);
+      if (!sc.cols) return;
+      anyTable = true;
+      const hasInOut = sc.cols.some(c => c.role === 'in' || c.role === 'out');
+      const hasBal = sc.cols.some(c => c.role === 'bal');
+      const markers = sc.raw.filter(t => t.marker);
+      // transactions plus balance checkpoints (brought/carried forward rows), in page order
+      let draft = sc.raw.map(t => t.marker
+        ? { mk: true, amount: 0, bal: t.bal, table: t.table, desc: '' }
+        : { date: null, _d: t.date, desc: t.parts.join(' ').replace(/\s+/g, ' ').trim(), _in: t.in, _out: t.out, _amt: t.amt, bal: t.bal, mark: t.mark, table: t.table });
+      draft = draft.filter(t => t.mk || t._in != null || t._out != null || t._amt != null); // a "transaction" with no amount is a stray line
+      if (draft.some(t => !t.mk && !yearOf(t._d))) return;
+      draft.forEach(t => {
+        if (t.mk) return;
+        t.date = iso(yearOf(t._d), t._d.m, t._d.d);
+        t.amount = hasInOut ? (t._in != null ? Math.abs(t._in) : 0) - (t._out != null ? Math.abs(t._out) : 0) : (t._amt == null ? 0 : t._amt);
+      });
+      if (!draft.some(t => !t.mk)) return;
+      const pr = Object.assign({}, printed);
+      const op = markers.find(m => m.marker === 'opening'), cl = markers.slice().reverse().find(m => m.marker === 'closing');
+      if (op && !pr.opening) pr.opening = { v: op.bal };
+      if (cl && !pr.closing && markers.filter(m => m.marker === 'closing').length === 1) pr.closing = { v: cl.bal };
+      const hyps = [];
+      if (hasInOut) hyps.push({ name: 'in/out columns', f: t => t.amount });
+      else {
+        hyps.push({ name: 'bank: amounts signed as printed', f: t => t.mark === 'CR' ? Math.abs(t._amt) : t.mark === 'DR' ? -Math.abs(t._amt) : t._amt });
+        hyps.push({ name: 'card: printed amounts are spend, CR or minus is a credit', card: true, f: t => t.mark === 'CR' ? Math.abs(t._amt) : -t._amt });
+      }
+      hyps.forEach(h => {
+        const tx = draft.map(t => t.mk ? t : Object.assign({}, t, { amount: h.f(t) }));
+        const real = tx.filter(t => !t.mk);
+        const res = verify(tx, pr, hasBal, !!h.card);
+        // when arithmetic cannot decide, wording and tidiness break the tie
+        const sem = real.reduce((s, t) => s + (credit.test(t.desc) ? (t.amount > 0 ? 1 : -1) : 0), 0);
+        const heads = {}; real.forEach(t => { const k = t.desc.split(' ').slice(0, 2).join(' ').toLowerCase(); heads[k] = (heads[k] || 0) + 1; });
+        const tidy = real.filter(t => heads[t.desc.split(' ').slice(0, 2).join(' ').toLowerCase()] > 1).length / real.length;
+        res.score += Math.max(-3, Math.min(3, sem)) * 0.5 + (h.card && cardWords ? 1 : 0) + (!h.card && cardWords ? -1 : 0) + tidy * 0.5 + sc.spacing - level * 0.1;
+        if (process.env.SMART_DEBUG) console.log('  [mode]', mode, h.name, 'rows', real.length, 'conf', res.confidence, 'score', res.score.toFixed(2), 'tidy', tidy.toFixed(2), JSON.stringify(Object.fromEntries(Object.entries(res.checks).map(([k, v]) => [k, v.msg]))));
+        if (!best || res.score > best.res.score) best = { h, tx: real, res, sc, pr, mode };
+      });
     });
+    if (!anyTable) { problems.push('No transaction table found (no header row with a date column and amount columns).'); return out; }
+    if (!best) { problems.push('A table was found but its dates have no year and no statement period was found to place them in.'); return out; }
+    out.columns = best.sc.columns; out.rows = best.tx.length; out.undatedRows = best.mode;
     out.txns = best.tx.map(t => ({ date: t.date, desc: t.desc, amount: t.amount, balance: t.bal, payee: t.desc.slice(0, 40) }));
     out.checks = best.res.checks; out.convention = best.h.name; out.confidence = best.res.confidence;
-    out.opening = printed.opening ? printed.opening.v : null; out.closing = printed.closing ? printed.closing.v : null;
+    out.opening = best.pr.opening ? best.pr.opening.v : null; out.closing = best.pr.closing ? best.pr.closing.v : null;
     out.ok = best.res.confidence === 'verified';
     if (best.res.confidence === 'failed') problems.push(...best.res.msgs);
     if (best.res.confidence === 'unverified') notes.push('Nothing on the statement could be used to prove these figures (no running balance or printed totals found).');
-    if (!out.period && out.txns.length) { out.period = { start: out.txns.map(t => t.date).sort()[0], end: out.txns.map(t => t.date).sort().pop() }; notes.push('Period taken from the first and last transaction.'); }
+    if (!out.period && out.txns.length) { const ds = out.txns.map(t => t.date).sort(); out.period = { start: ds[0], end: ds[ds.length - 1] }; notes.push('Period taken from the first and last transaction.'); }
     return out;
   }
 

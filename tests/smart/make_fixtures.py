@@ -115,6 +115,36 @@ make('F_ordinal_dates_two_pages', ['Date','Description','Money out','Money in','
      pre=['Account summary for 1st Mar 2026 to 31st Mar 2026'], per_page=24)
 EXP['F_ordinal_dates_two_pages'] = {'txns': [[d, a] for d, _, a, _ in RB], 'closing': None}
 
+
+# I: date printed once per day, two-line descriptions (amounts on the 2nd line), "BROUGHT/CARRIED FORWARD" on every page, Paid In(£)/Withdrawn(£)
+def make_undated(name, txs, open_bal, per_page=14):
+    c = canvas.Canvas(f'fixtures/{name}.pdf', pagesize=A4); W, H = A4
+    X = dict(date=40, desc=110, inn=(340, 395), out=(400, 455), bal=(470, 530))
+    def top(first, b):
+        c.setFont('Helvetica-Bold', 12); c.drawString(40, H - 50, 'Example Bank Statement'); c.setFont('Helvetica', 9)
+        if first:
+            for i, l in enumerate(['Period Covered 13 DEC 2023 to 12 JAN 2024', f'Previous Balance £{money(open_bal)}', 'Paid In £%s' % money(sum(a for _, _, a in txs if a > 0)), 'Withdrawn £%s' % money(-sum(a for _, _, a in txs if a < 0)), f'New Balance £{money(open_bal + sum(a for _, _, a in txs))}']):
+                c.drawString(300, H - 80 - i * 12, l)
+        y = H - 180 if first else H - 100
+        c.setFont('Helvetica-Bold', 8); c.drawString(X['date'], y, 'Date'); c.drawString(X['desc'], y, 'Description'); c.drawRightString(X['inn'][1], y, 'Paid In(£)'); c.drawRightString(X['out'][1], y, 'Withdrawn(£)'); c.drawRightString(X['bal'][1], y, 'Balance(£)')
+        c.setFont('Helvetica', 8); y -= 14
+        c.drawString(X['desc'], y, 'BROUGHT FORWARD'); c.drawRightString(X['bal'][1], y, money(b)); return y - 14
+    bal = open_bal; y = top(True, bal); last = None; n = 0; first_row = True
+    for d, desc, a in txs:
+        if n and n % per_page == 0:
+            c.drawString(X['desc'], y, 'CARRIED FORWARD'); c.drawRightString(X['bal'][1], y, money(bal)); c.showPage(); y = top(False, bal)
+        bal += a
+        if d != last: c.drawString(X['date'], y, d_long(d)[:6].upper() if not first_row else d_long(d).upper()); last = d; first_row = False
+        c.drawString(X['desc'], y, 'Card Transaction ' + desc if a < 0 else 'Automated Credit ' + desc); y -= 10
+        c.drawString(X['desc'], y, 'LONDON GB')
+        c.drawRightString(X['inn'][1] if a > 0 else X['out'][1], y, money(a)); c.drawRightString(X['bal'][1], y, money(bal)); y -= 13; n += 1
+    c.drawString(X['desc'], y, 'CARRIED FORWARD'); c.drawRightString(X['bal'][1], y, money(bal)); c.save()
+U = [('2023-12-14','SHOP ONE',-2762),('2023-12-14','CAFE TWO',-540),('2023-12-15','FRIEND A',449),('2023-12-18','MARKET THREE',-2589),('2023-12-18','STORE FOUR',-95),('2023-12-18','GARAGE FIVE',-2501),
+     ('2023-12-19','DELI SIX',-466),('2023-12-20','BOOKS SEVEN',-1869),('2023-12-21','SHOP ONE',-3244),('2023-12-21','TRAIN EIGHT',-2259),('2023-12-22','CAFE TWO',-1000),('2023-12-27','FRIEND B',15000),
+     ('2023-12-28','PHARMACY NINE',-1320),('2023-12-28','SHOP ONE',-210),('2023-12-29','MARKET THREE',-3833),('2024-01-02','SALARY EXAMPLE',150000),('2024-01-03','GARAGE FIVE',-4761),('2024-01-03','DELI SIX',-27685)]
+make_undated('I_date_once_per_day_two_line_descriptions', U, 1025044)
+EXP['I_date_once_per_day_two_line_descriptions'] = {'txns': [[d, a] for d, _, a in U], 'closing': None}
+
 # G: tampered balance (one amount wrong) -> must NOT verify
 rows = [{'cells': {'date': d_slash(d), 'desc': desc, 'amt': ('-' if a < 0 else '') + '£' + money(a), 'bal': '£' + money(b + (500 if i == 5 else 0))}} for i, (d, desc, a, b) in enumerate(R)]
 make('G_tampered_must_fail', ['Date','Description','Amount','Balance'], [('date',40,100),('desc',110,330),('amt',340,430),('bal',440,540)], rows, pre=['Statement period 01/03/2026 to 31/03/2026'])
