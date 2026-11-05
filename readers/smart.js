@@ -82,12 +82,12 @@
   }
 
   // ---------------------------------------------------------------- values
-  const AMT = /^[-−–(]?\s*£?\s*[-−–]?\s*[\d,]*\d\.\d{2}\s*\)?\s*(?:CR|DR|Cr|Dr|cr|dr)?$/;
+  const AMT = /^[-−–(]?\s*£?\s*[-−–]?\s*[\d,]*\d\.\d{2}\s*[-−–)]?\s*(?:CR|DR|Cr|Dr|cr|dr)?$/;
   const isAmount = s => AMT.test(s.trim());
   /** -> { v: pence (as printed, positive unless a minus/brackets), mark: 'CR'|'DR'|'' } */
   function amountOf(s) {
     const t = s.trim();
-    const neg = /^[-−–(]/.test(t) || /^£?\s*[-−–]/.test(t);
+    const neg = /^[-−–(]/.test(t) || /^£?\s*[-−–]/.test(t) || /\d\s*[-−–]\s*(?:CR|DR)?$/i.test(t);
     const mark = (t.match(/(CR|DR)$/i) || [''])[0].toUpperCase();
     const n = Math.round(parseFloat(t.replace(/[^\d.]/g, '')) * 100);
     return { v: neg ? -n : n, mark };
