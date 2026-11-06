@@ -72,17 +72,18 @@
   const norm = h => String(h).toLowerCase().replace(/[()£]/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   const ROLE = [
     ['state', /^(state|status)$/],
+    ['flag', /^(debit credit flag|debit credit indicator|credit debit flag|credit debit indicator|dr cr|cr dr|dr cr flag|dr cr indicator|debit or credit|credit or debit|transaction indicator|d c indicator)$/],
     ['fee', /^fees?$/],
     ['cur', /^currency$/],
-    ['bal', /^((running|account|closing|available) )?balance( after)?( gbp)?$/],
-    ['in', /^(paid in|money in|credit|credits|credit amount|deposits?|payments? in|amount in|received)$/],
-    ['out', /^(paid out|money out|debit|debits|debit amount|withdrawals?|payments? out|amount out|spent)$/],
-    ['amt', /^(amount|value|amount gbp|transaction amount|net amount)$/],
-    ['date', /^((transaction|posting|posted|completed|started|value|booking|processed) )?date$/],
-    ['desc', /^(description|transaction description|details|memo|narrative|reference|name|counter ?party|payee|merchant)$/],
+    ['bal', /^((running|account|closing|available|ledger) )?(balance|bal)( after)?( gbp)?$/],
+    ['in', /^(paid in|money in|credit|credits|credit amount|credit amt|deposits?|payments? in|amount in|amount credited|received|in)$/],
+    ['out', /^(paid out|money out|debit|debits|debit amount|debit amt|withdrawals?|withdrawn|payments? out|amount out|amount debited|spent|out)$/],
+    ['amt', /^(amount|value|amount gbp|amount in gbp|transaction amount|billing amount|billed amount|net amount|debit credit|credit debit|transaction value|amount charged|amt)$/],
+    ['date', /^((transaction|trans|posting|posted|completed|started|value|booking|processed|effective) )?date( of transaction)?$/],
+    ['desc', /^(description|transaction description|transaction details|details|memo|narrative|transaction narrative|particulars|reference|name|counter ?party|payee|payee name|merchant|merchant name|merchant description|merchant description|merchant details|description merchant)$/],
   ];
-  const DATE_PRIO = { 'transaction date': 4, 'date': 4, 'completed date': 4, 'booking date': 3, 'processed date': 3, 'posting date': 2, 'posted date': 1, 'started date': 1, 'value date': 0 };
-  const DESC_PRIO = ['name', 'counter party', 'counterparty', 'payee', 'merchant', 'transaction description', 'description', 'details', 'narrative', 'memo', 'reference'];
+  const DATE_PRIO = { 'transaction date': 4, 'trans date': 4, 'date of transaction': 4, 'effective date': 3, 'date': 4, 'completed date': 4, 'booking date': 3, 'processed date': 3, 'posting date': 2, 'posted date': 1, 'started date': 1, 'value date': 0 };
+  const DESC_PRIO = ['name', 'counter party', 'counterparty', 'payee', 'payee name', 'merchant', 'merchant name', 'merchant description', 'transaction description', 'transaction details', 'description', 'details', 'narrative', 'transaction narrative', 'particulars', 'memo', 'reference'];
   const roleOf = h => { const n = norm(h); for (const [r, re] of ROLE) if (re.test(n)) return r; return null; };
 
   function findHeader(rows) {
@@ -131,7 +132,11 @@
   // ---------------------------------------------------------------- descriptions that hint at the sign convention
   const CREDIT_WORDS = /payment[ -]*(received|thank)|thank you|refund|cashback|interest paid|salary|wages|faster payment in|bank giro credit|\bbgc\b|deposit/i;
   const DEBIT_WORDS = /direct debit|\bdd\b|standing order|card payment|\bpos\b|atm|cash withdrawal|cash machine|bill payment|\bfee\b|charge/i;
-  const CARD_HEADERS = /card member|card no|card number|appears on your statement|account #/i;
+  const CARD_HEADERS = /card member|card no|card number|cardholder|appears on your statement|account #/i;
+const CARD_H = [[/card member|card no|card number|cardholder|appears on your statement/i, 2], [/merchant (city|county|postal|post code|country)|mcc|sic/i, 2], [/^account #$/i, 1], [/billing amount|billed amount/i, 1], [/merchant/i, 1], [/posting date|posted date/i, 0.5], [/reference number/i, 0.5]];
+const CUR_H = [[/sort code/i, 2], [/account number/i, 1], [/paid in|paid out|money in|money out/i, 1.5], [/^(running |account |closing )?balance/i, 1.5], [/cheque|chq/i, 1], [/^type$|transaction type/i, 0.5]];
+const CUR_WORDS = /direct debit|standing order|faster payment|\bbacs\b|\bbgc\b|\bdd\b|\bso\b|cash wdl|cash withdrawal|\batm\b|\bfpi\b|\bfpo\b|salary|cheque|bank giro|transfer (to|from)/i;
+const CARD_WORDS = /payment received|payment[ -]*thank|thank you|annual fee|late payment|cash advance|foreign (transaction|currency) fee/i;
 
   // ---------------------------------------------------------------- the reader
   function read(input, name) {
@@ -148,8 +153,70 @@
     const parsed = parseCSV(text, delim);
     if (parsed.unterminatedQuote) return fail('A quoted cell is never closed, so the rows after it cannot be trusted.');
     const rows = parsed.rows;
-    const head = findHeader(rows);
-    if (!head) return fail('No transaction table found (no header row with a date column and amount columns).');
+    const named = findHeader(rows);
+    let first = null;
+    if (named) { first = interpret(rows, delim, named, name, false); if (!(first.confidence === 'failed' && first.noAmountColumn)) return first; }
+    // No usable header names: find the columns from what is IN them (dates, money, text). Arithmetic still has the last word.
+    const heads = inferHeads(rows);
+    if (!heads.length) return first || fail('No transaction table found (no header row with a date column and amount columns, and the contents do not look like a transaction list).');
+    const results = heads.map(h => interpret(rows, delim, h, name, true));
+    const verified = results.filter(r => r.confidence === 'verified');
+    if (verified.length === 1) return verified[0];
+    if (verified.length > 1 || results.length > 1) return fail('The column names are not recognised and the contents do not settle which column is the amount, so nothing was read.');
+    return results[0];
+  }
+
+  /** Columns found from their contents (used when the header names are missing or unknown). Returns candidate headers; several when roles are ambiguous. */
+  function inferHeads(rows) {
+    const filled = r => r.filter(c => String(c).trim()).length;
+    const s = rows.findIndex(r => filled(r) >= 3 && r.some(c => dateCell(c)));
+    if (s < 0) return [];
+    const hdr = s > 0 && filled(rows[s - 1]) >= 2 && !rows[s - 1].some(c => dateCell(c)) ? s - 1 : -1;
+    const data = []; for (let i = s; i < rows.length && data.length < 300; i++) if (filled(rows[i]) >= 3) data.push(rows[i]);
+    if (data.length < 3) return [];
+    const width = Math.max(...data.map(r => r.length));
+    const moneyLike = c => /\.\d{2}(?!\d)/.test(c) ? money(c, false) != null : /,\d{2}$/.test(c) ? money(c, true) != null : false;
+    const st = [];
+    for (let j = 0; j < width; j++) {
+      const cells = data.map(r => String(r[j] == null ? '' : r[j]).trim()); const ne = cells.filter(Boolean);
+      const dates = ne.filter(c => dateCell(c)).length, moneys = ne.filter(c => !dateCell(c) && moneyLike(c)).length;
+      st.push({ j, cells, fill: ne.length / data.length, dateFrac: dates / data.length, moneyFrac: ne.length ? moneys / ne.length : 0, len: ne.length ? ne.reduce((a, c) => a + c.length, 0) / ne.length : 0 });
+    }
+    const dateCol = st.find(c => c.dateFrac >= 0.9); if (!dateCol) return [];
+    const mcols = st.filter(c => c.j !== dateCol.j && c.moneyFrac >= 0.9 && c.fill >= 0.05);
+    const text = st.filter(c => c.j !== dateCol.j && c.moneyFrac < 0.9 && c.dateFrac < 0.5 && c.fill >= 0.5).sort((a, b) => b.len - a.len)[0];
+    const both = (a, b) => a.cells.filter((c, i) => c && b.cells[i]).length / data.length;
+    const mk = assign => {
+      const roles = new Array(width).fill(null); roles[dateCol.j] = 'date'; if (text) roles[text.j] = 'desc'; Object.entries(assign).forEach(([role, c]) => { roles[c.j] = role; });
+      const cells = Array.from({ length: width }, (_, j) => (hdr >= 0 && rows[hdr][j] != null && String(rows[hdr][j]).trim()) ? rows[hdr][j] : 'column ' + (j + 1));
+      return { index: hdr, cells, roles, inferred: true };
+    };
+    if (mcols.length === 1) return [mk({ amt: mcols[0] })];
+    if (mcols.length === 2) { const [a, b] = mcols; return both(a, b) < 0.1 ? [mk({ out: a, in: b }), mk({ in: a, out: b })] : [mk({ amt: a, bal: b }), mk({ amt: b, bal: a })]; }
+    if (mcols.length === 3) { for (const [a, b, c] of [[0, 1, 2], [0, 2, 1], [1, 2, 0]]) { const x = mcols[a], y = mcols[b], z = mcols[c]; if (both(x, y) < 0.1 && z.fill >= 0.5) return [mk({ out: x, in: y, bal: z }), mk({ in: x, out: y, bal: z })]; } }
+    return [];
+  }
+
+  /** Credit card or current account? Scored from header words, description wording and the sign convention that fitted. */
+  function classifyAccount(headers, data, hyp, balanceProved) {
+    let card = 0, cur = 0; const why = [];
+    headers.forEach(h => { const t = String(h).trim(); CARD_H.forEach(([re, w]) => { if (re.test(t)) { card += w; why.push('header "' + t + '" is typical of a card'); } }); CUR_H.forEach(([re, w]) => { if (re.test(t)) { cur += w; why.push('header "' + t + '" is typical of a current account'); } }); });
+    const n = Math.max(1, data.length);
+    const cw = data.filter(r => CUR_WORDS.test(r.desc)).length / n, kw = data.filter(r => CARD_WORDS.test(r.desc)).length;
+    if (cw >= 0.05) { cur += 2; why.push('descriptions mention direct debits, standing orders or cash machines'); }
+    if (kw >= 1) { card += 2; why.push('a payment-received or card-fee row'); }
+    if (hyp && hyp.card) { card += 3; why.push('the amounts only make sense as card spend'); }
+    if (balanceProved) { cur += 1; why.push('a running balance that adds up'); }
+    const accountType = card - cur >= 2 ? 'card' : cur - card >= 2 ? 'current' : 'unknown';
+    return { accountType, accountTypeWhy: why.slice(0, 6), accountTypeScore: { card, current: cur } };
+  }
+
+  /** Read one table, given its header (named or inferred). */
+  function interpret(rows, delim, head, name, inferred) {
+    const notes = [], problems = [];
+    const out = { type: 'csv', institution: 'Unknown bank (CSV, auto-detected)', name, notes, problems, txns: [], confidence: 'failed', ok: false };
+    const fail = msg => { problems.push(msg); out.confidence = 'failed'; out.ok = false; return out; };
+    if (inferred) notes.push('The column names were not recognised, so the columns were found from their contents.');
     const col = {}; const descCols = [];
     head.roles.forEach((r, i) => {
       if (!r) return;
@@ -159,7 +226,7 @@
     });
     descCols.sort((a, b) => DESC_PRIO.indexOf(norm(head.cells[a])) - DESC_PRIO.indexOf(norm(head.cells[b])));
     const hasAmt = col.amt != null, hasInOut = col.in != null || col.out != null;
-    if (!hasAmt && !hasInOut) return fail('No amount column found.');
+    if (!hasAmt && !hasInOut) { out.noAmountColumn = true; return fail('No amount column found.'); }
     out.columns = Object.fromEntries(['date', 'amt', 'in', 'out', 'bal', 'fee', 'state', 'cur'].filter(k => col[k] != null).map(k => [k, head.cells[col[k]].trim()]));
     out.columns.desc = descCols.map(i => head.cells[i].trim());
     const cardHeader = head.cells.some(h => CARD_HEADERS.test(h));
@@ -187,6 +254,9 @@
       const mi = col.in != null ? money(get('in'), decimalComma) : undefined, mo = col.out != null ? money(get('out'), decimalComma) : undefined;
       const b = col.bal != null ? money(get('bal'), decimalComma) : undefined;
       const f = col.fee != null ? money(get('fee'), decimalComma) : undefined;
+      const flagText = col.flag != null ? get('flag').trim().toLowerCase() : '';
+      const dir = !flagText ? 0 : /^(credit|cr|c|crd|credited)$/.test(flagText) ? 1 : /^(debit|dr|d|dbt|debited)$/.test(flagText) ? -1 : null;
+      if (col.flag != null && flagText && dir === null) return fail(`Row ${i + 1} has a debit/credit marker (${flagText.slice(0, 12)}) that is not understood.`);
       if (!d) {
         const anyMoney = [a, mi, mo].some(x => x && x.v != null);
         if (anyMoney && !/total|balance|brought|carried|opening|closing|summary|statement/i.test(r.join(' '))) return fail(`Row ${i + 1} has an amount but no readable date, so a transaction would be lost.`);
@@ -198,7 +268,7 @@
         if (b) { raw.push({ checkpoint: true, bal: b.v, line: i + 1, date: d }); continue; }   // "brought forward" style row
         skipped.notTransaction++; continue;
       }
-      raw.push({ line: i + 1, d, desc, a, mi, mo, b, f, mark: a && a.mark || mi && mi.mark || mo && mo.mark || '' });
+      raw.push({ line: i + 1, d, desc, a, mi, mo, b, f, dir, mark: a && a.mark || mi && mi.mark || mo && mo.mark || '' });
     }
     if (curSeen.size && [...curSeen].some(c => c !== 'GBP')) return fail('This file has amounts in a currency other than pounds, which is not supported.');
     const data = raw.filter(r => !r.checkpoint);
@@ -233,16 +303,18 @@
 
     // amounts, as printed
     data.forEach(r => {
-      if (hasAmt) r.printed = r.a ? r.a.v : 0;
+      if (hasAmt && col.flag != null && col.in == null && col.out == null) { if (!r.dir) { r.printed = null; } else r.printed = r.dir * Math.abs(r.a ? r.a.v : 0); }
+      else if (hasAmt) r.printed = r.a ? r.a.v : 0;
       else r.printed = (r.mi ? Math.abs(r.mi.v) : 0) - (r.mo ? Math.abs(r.mo.v) : 0);
       if (r.f && r.f.v) r.printed -= Math.abs(r.f.v);   // a separate fee column also changes the balance
     });
-    // in/out columns state the direction themselves. A lone amount column needs a sign convention.
+    if (col.flag != null && hasAmt && data.some(r => r.printed === null)) return fail('Some rows have no debit/credit marker, so their direction is unknown.');
+    // in/out columns (or a debit/credit flag) state the direction themselves. A lone amount column needs a sign convention.
     const hyps = [];
-    if (hasAmt && col.in == null && col.out == null) {
+    if (hasAmt && col.in == null && col.out == null && col.flag == null) {
       hyps.push({ name: 'bank: amounts signed as printed', card: false, f: r => r.mark === 'CR' ? Math.abs(r.printed) : r.mark === 'DR' ? -Math.abs(r.printed) : r.printed });
       hyps.push({ name: 'card: printed amounts are spend, minus or CR is a credit', card: true, f: r => r.mark === 'CR' ? Math.abs(r.printed) : -r.printed });
-    } else hyps.push({ name: 'direction from the in/out columns', card: false, f: r => r.printed });
+    } else hyps.push({ name: col.flag != null ? 'direction from the debit/credit marker column' : 'direction from the in/out columns', card: false, f: r => r.printed });
     // Monzo-style files carry the amount AND money in/out: they must agree, which also settles the sign
     let crossChecked = false;
     if (hasAmt && (col.in != null || col.out != null)) {
@@ -290,6 +362,13 @@
       if (crossChecked) notes.push('The amount column agrees with the money in/out columns on every row.');
       if (ambiguousDates) notes.push('Dates could be day-first or month-first; read day-first.');
     }
+    // debit/credit marker column: does the printed sign agree with it?
+    if (col.flag != null && hasAmt) {
+      const withSign = data.filter(r => r.a && r.a.v !== 0 && r.dir);
+      const cardLike = withSign.filter(r => Math.sign(r.a.v) === -r.dir).length, bankLike = withSign.filter(r => Math.sign(r.a.v) === r.dir).length;
+      if (withSign.length) notes.push(cardLike === withSign.length ? 'Printed amounts follow the card style (spend positive, payments negative) and agree with the debit/credit marker on every row.' : bankLike === withSign.length ? 'Printed amounts follow the bank style (money out negative) and agree with the debit/credit marker on every row.' : 'The printed signs do not all follow one style; the debit/credit marker was used.');
+    }
+    Object.assign(out, classifyAccount(head.cells, data, best.h, out.confidence === 'verified' && hasBal));
     const ds = tx.map(t => t.date).sort(); out.period = { start: ds[0], end: ds[ds.length - 1] };
     return out;
   }
