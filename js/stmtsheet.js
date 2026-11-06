@@ -63,7 +63,7 @@ export async function nameFiles(ids, single) {
   if (ans === null || ans === 'skip') { return openStatement(ids[0]); }
   const { accountId, created } = applyChoice(book, ans);
   ids.forEach(i => { book.assign[i] = accountId; });
-  book.layouts[r.sig] = accountId;
+  if (r.sig) book.layouts[r.sig] = accountId;
   if (created && created.kind === 'current' && !created.link) { S.accounts[created.id] = { role: created.role }; store.set('accounts', S.accounts); }
   S.book = book; await saveVault(); rebuild(); render(); toast('Saved');
 }

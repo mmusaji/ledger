@@ -37,7 +37,16 @@ export function csvResult(r, id) {
     convention: r.convention || '', rows: r.txns.length, sig: layoutSig(r), account: { id: 'csvfile:' + id.slice(6) }, holders: [], mark: csvMark(r) };
 }
 
-/** `ctx`: { files, ignored, version, CSVR, RD, extractPages(bytes) }  `file`: { name, arrayBuffer() }  */
+/** A PDF read by the generic reader and proven correct, in the same shape as a CSV so it goes through the same account naming.
+ *  It has no layout signature, so it is always asked about and never attached to an account silently. */
+export function smartResult(g, id) {
+  const card = /card/.test(g.convention || '');
+  return { type: 'csv', source: 'pdf', institution: g.institution, period: g.period, txns: g.txns.map(t => ({ date: t.date, desc: t.desc, amount: t.amount, balance: t.balance == null ? null : t.balance, payee: (t.desc || '').slice(0, 40) })),
+    ok: true, confidence: 'verified', accountType: card ? 'card' : 'current', accountTypeWhy: card ? 'the amounts only make sense as card spend' : 'the running balance adds up as a bank account',
+    problems: [], notes: g.notes || [], convention: g.convention || '', rows: g.txns.length, sig: null, account: { id: 'csvfile:' + id.slice(6) }, holders: [], mark: '✓' };
+}
+
+/** `ctx`: { files, ignored, version, CSVR, RD, SMART (or null when switched off), extractPages(bytes) }  `file`: { name, arrayBuffer() }  */
 export async function readOne(file, ctx) {
   const name = file.name;
   try {
@@ -52,6 +61,17 @@ export async function readOne(file, ctx) {
       bytes = null; // the PDF itself is dropped as soon as it has been read
       const r = ctx.RD.readStatement(pages, name);
       if (!r.period || r.type === 'unsupported' || r.type === 'unreadable') {
+        // Last resort for a PDF no bank-specific reader knows: the generic reader, accepted only when it can PROVE every row
+        // (running balance or printed totals). Anything less is refused, exactly as before.
+        if (r.type !== 'unreadable' && ctx.SMART) {
+          let g = null; try { g = ctx.SMART.read(pages, name); } catch (e) { g = null; }
+          if (g && g.confidence === 'verified' && g.period && (g.txns || []).length) {
+            entry.result = smartResult(g, id);
+            return { name, id, kind, status: 'added', entry, mark: '✓', rows: g.txns.length, period: g.period, label: 'PDF · other bank, checked' };
+          }
+          if (g && g.confidence === 'scanned') return { name, id, kind, status: 'failed', why: 'This PDF is a scan or picture with no readable text, so it is not supported.', hint: HINT_CSV };
+          return { name, id, kind, status: 'failed', why: 'This PDF is not a layout the app knows, and its figures could not be proven correct, so it was not read.', hint: HINT_CSV };
+        }
         const scan = r.type === 'unreadable';
         return { name, id, kind, status: 'failed', why: scan ? 'This PDF is a scan or picture with no readable text, so it is not supported.' : 'This PDF is not a statement layout the app reads.', hint: HINT_CSV };
       }

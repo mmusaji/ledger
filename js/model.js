@@ -31,7 +31,7 @@ export function rebuild(extraSkipped = []) {
       count: (r.txns || []).length, opening: r.opening, closing: r.closing, summary: r.summary, holders: r.holders, pots: r.pots,
       account: a ? { id: a.link ? a.link.accId : a.id, bank: a.name, last4: '' } : r.account,
       held: e.hold === 'out', acked: e.hold === 'keep',
-      csv: r.type === 'csv' ? { confidence: r.confidence, mark: r.mark, accountType: r.accountType, accountTypeWhy: r.accountTypeWhy, notes: r.notes || [], acct: a ? { id: a.id, name: a.name, kind: a.kind, role: a.role, payHint: a.payHint || '', link: a.link || null } : null } : undefined };
+      csv: r.type === 'csv' ? { src: r.source || 'csv', confidence: r.confidence, mark: r.mark, accountType: r.accountType, accountTypeWhy: r.accountTypeWhy, notes: r.notes || [], acct: a ? { id: a.id, name: a.name, kind: a.kind, role: a.role, payHint: a.payHint || '', link: a.link || null } : null } : undefined };
   }).sort((a, b) => a.period.end.localeCompare(b.period.end));
   // Several files for one account can cover the same days: work out which transactions count (js/book.js).
   const gkeyPdf = r => (r.type === 'santander' || r.type === 'monzo') ? accIdOf(r) : r.type;

@@ -28,6 +28,7 @@ export function bindEvents() {
         case 'go-settings': return go('settings');
         case 'demo': return loadDemo();
         case 'add-local': return chooseLocalFiles();
+        case 'toggle-smart': store.set('smartPdf', !store.get('smartPdf', true)); return renderSettings();
         case 'stmt-open': return openStatement(v);
         case 'marks-help': return marksHelp();
         case 'csv-name': return nameFiles([v], true);

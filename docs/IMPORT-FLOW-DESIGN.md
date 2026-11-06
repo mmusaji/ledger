@@ -97,3 +97,12 @@ The saved data lives in an IndexedDB database called `ledger`, browser storage a
 - **Import is all-or-nothing** and has **Undo** (files, accounts and layouts added by the last import).
 - **Statements that read but do not add up** open a review sheet: the size of the difference, what keeping or leaving them out does to the figures, and Keep / Leave out / Remove. Until you decide they are counted (as before) and the Dashboard and Reports show a notice. The best fix is to add the CSV of the same statement.
 - A tap on any mark opens "What the marks mean". Names of files that could not be read are never saved (only a count).
+
+
+## Stage 4 and 5 (collapsible lists, generic PDF fallback)
+
+**Stage 4.** Statement lists are grouped by account as collapsible sections titled "Name (n)". A section starts open only when something inside needs attention (a warning, a held file, a file waiting for an account); otherwise it starts closed. What the person opens or closes is remembered on the device.
+
+**Stage 5.** A PDF that no bank-specific reader recognises is passed to the generic table reader as a last resort. It is accepted only when its own arithmetic proves every row (running balances or printed totals); anything less is refused exactly as before, and nothing is stored. A PDF accepted this way is treated like a CSV: it asks which account it belongs to, and is marked "PDF, other bank". Settings has an On/Off switch ("PDFs from other banks"), default On.
+
+**Browser-only bug found while checking.** The generic reader had two Node-only debug lines (`process.env`). In a browser they threw, the error was swallowed, and every such PDF was refused, although Node tests passed. Fixed with a guarded `ENV`, and a test now fails if the file touches `process` directly. Real samples in a browser: barclays, hsbc, natwest, revolut and first-direct are read and proven; Tesco uses its own reader; monzo.pdf, bank-of-america, nationwide, starling and the scanned Santander are still refused.

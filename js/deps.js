@@ -2,4 +2,4 @@
 
 export const { CATEGORIES, GROUP_OF, categorise } = window.FinRules;
 
-export const P = window.FinParser, RD = window.FinReaders, CSVR = window.SmartCSV;
+export const P = window.FinParser, RD = window.FinReaders, CSVR = window.SmartCSV, SMART = window.FinSmart;

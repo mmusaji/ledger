@@ -62,6 +62,19 @@ const PDFHEAD = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 
   const boom = await PL.readOne(file('x.pdf', PDFHEAD), mk({ extractPages: async () => { throw new Error('corrupt'); } }));
   ok(boom.status === 'failed' && /corrupt/.test(boom.why), 'a PDF that cannot be opened fails without throwing');
 
+  // ---- generic PDF reader: only when it can prove the rows, and only for PDFs no bank-specific reader knows
+  const smartCtx = g => mk({ RD: { readStatement: () => ({ type: 'unsupported', problems: ['x'] }) }, SMART: { read: () => g } });
+  const gTx = [{ date: '2026-01-02', desc: 'SHOP', amount: -500, balance: 9500 }, { date: '2026-01-03', desc: 'PAY', amount: 1000, balance: 10500 }];
+  const proven = await PL.readOne(file('o.pdf', PDFHEAD), smartCtx({ confidence: 'verified', institution: 'Unknown bank', period: { start: '2026-01-02', end: '2026-01-03' }, txns: gTx, convention: 'bank' }));
+  ok(proven.status === 'added' && proven.entry.result.type === 'csv' && proven.entry.result.source === 'pdf' && proven.mark === '✓' && proven.entry.result.sig === null, 'a proven generic PDF is added, shaped like a CSV, with no layout signature');
+  ok((await PL.readOne(file('o2.pdf', PDFHEAD), smartCtx({ confidence: 'unverified', period: { start: '2026-01-02', end: '2026-01-03' }, txns: gTx }))).status === 'failed', 'an unproven generic PDF is refused');
+  ok((await PL.readOne(file('o3.pdf', PDFHEAD), smartCtx({ confidence: 'failed', txns: [] }))).status === 'failed', 'a generic PDF whose sums disagree is refused');
+  ok((await PL.readOne(file('o4.pdf', PDFHEAD), smartCtx({ confidence: 'scanned', txns: [] }))).why.includes('scan'), 'a scan is still reported as a scan');
+  ok((await PL.readOne(file('o5.pdf', PDFHEAD), mk({ RD: { readStatement: () => ({ type: 'unsupported', problems: ['x'] }) }, SMART: null }))).status === 'failed', 'switched off: refused as before');
+  ok((await PL.readOne(file('o6.pdf', PDFHEAD), mk({ RD: { readStatement: () => ({ type: 'unsupported', problems: ['x'] }) }, SMART: { read: () => { throw new Error('boom'); } } }))).status === 'failed', 'a crash inside the generic reader is a refusal, not an error');
+  const bankPdf = await PL.readOne(file('b.pdf', PDFHEAD), mk({ RD: { readStatement: () => ({ type: 'amex', ok: true, period: { start: '2026-01-01', end: '2026-01-31' }, txns: [{}] }) }, SMART: { read: () => { throw new Error('must not be called'); } } }));
+  ok(bankPdf.status === 'added' && bankPdf.entry.result.type === 'amex', 'a PDF a bank-specific reader knows never reaches the generic one');
+
   // ---- the summary
   const sum = PL.summarise([good, nb, bad, junk, { status: 'known' }, { status: 'known' }, { status: 'ignored' }], '2026-03-05T10:00:00Z');
   ok(sum.added.length === 2 && sum.failed.length === 2 && sum.known === 2 && sum.ignored === 1, 'summary counts');
@@ -84,6 +97,9 @@ const PDFHEAD = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 
   const twin = await PL.readOne(file('a2.csv', BANK.replace('SHOP THREE', 'SHOP FOUR')), mk());
   S.files[twin.id] = twin.entry; M.rebuild();
   ok(S.statements.length === 3, 'two CSVs covering the same dates are not merged as duplicates');
+
+  // ---- the browser has no `process`: the generic reader once crashed there (quietly, so every PDF was refused) while passing in Node
+  { const src = fs.readFileSync(path.join(root, 'readers/smart.js'), 'utf8'); ok(!/[^.\w]process\.env/.test(src.replace(/typeof process[^\n]*/, '')), 'readers/smart.js never touches `process` directly (browser-safe)'); }
 
   console.log(fail ? `${fail} FAILED of ${n}` : `pipeline: all ${n} checks passed`); process.exit(fail ? 1 : 0);
 })().catch(e => { console.log('CRASH', e); process.exit(1); });

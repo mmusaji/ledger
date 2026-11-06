@@ -27,6 +27,12 @@ export function renderSettings() {
         <div class="seg">${['household', 'personal'].map(r => `<button class="${a.role === r ? 'on' : ''}" data-act="acc-role" data-v="${esc(a.id)}|${r}">${r === 'household' ? 'Household' : 'Personal'}</button>`).join('')}</div></li>${a.role === 'personal' ? `<li><span class="small muted">Find payments from the household account to this one and count them as personal spending.</span><button class="btn ghost slim" data-act="acc-find" data-v="${esc(a.id)}">Find transfers</button></li>` : ''}`).join('')}</ul>
     </div>` : ''}
 
+    <h2>PDFs from other banks</h2>
+    <div class="card stack">
+      <p class="small muted" style="margin:0">Statements from banks the app has no reader for can still be read when every figure can be proven (a running balance or the printed totals). Anything it cannot prove is refused. These are shown as "other bank, checked" and you name the account, as with a CSV.</p>
+      <div class="row"><span>${store.get('smartPdf', true) ? 'On' : 'Off'}</span><button class="btn ghost slim" data-act="toggle-smart">${store.get('smartPdf', true) ? 'Turn off' : 'Turn on'}</button></div>
+    </div>
+
     <h2>Your categorisation rules (${S.rules.length})</h2>
     <div class="card stack">
       <p class="small muted" style="margin:0">If a transaction's description contains the text, it gets that category. Your rules run before the built-in ones. Tip: tap any transaction to fix its category, and a rule is added for you.</p>

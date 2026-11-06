@@ -4,7 +4,7 @@ import { lastImportCard } from './importview.js';
 import { MARK_TEXT } from './pipeline.js';
 import { accIdOf, activeScope, isBankStmt, scopeStatements } from './model.js';
 import { S } from './state.js';
-import { $, MON, addDays, daysBetween, esc, gbp, isoOf, monthLabel, nice, niceShort, pad, today } from './util.js';
+import { $, MON, addDays, daysBetween, esc, gbp, isoOf, monthLabel, nice, niceShort, pad, store, today } from './util.js';
 
 const TYPES = [['santander', 'Santander', 5], ['amex', 'Amex', 19], ['tesco', 'Tesco CC', 24], ['payslip', 'Payslips', 26]];
 
@@ -43,12 +43,22 @@ function coverage(list) {
 const markCls = m => ({ '✓': 'in', '○': 'muted' }[m] || 'out');
 const when = s => s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end));
 
+/** A collapsible list with its count in the title, e.g. "Amex (14)". Closed by default unless something in it needs a look
+ *  (a statement that does not add up, or a file waiting for a name); once you open or close one, the app remembers. */
+const openMap = () => store.get('openGroups', {});
+function grp(key, title, list, inner, meta = '') {
+  const attention = list.some(s => (!s.ok && !s.csv && !s.acked) || s.held || (s.csv && !s.csv.acct));
+  const m = openMap(); const open = key in m ? m[key] : attention;
+  const bad = list.filter(s => !s.csv && !s.ok && !s.acked).length;
+  return `<details class="grp" data-grp="${esc(key)}" ${open ? 'open' : ''}><summary><span class="gt">${title} <span class="muted">(${list.length})</span></span><span class="gm small">${bad ? `<span class="out">⚠ ${bad}</span> ` : ''}${list.length ? esc(nice(list.map(x => x.period.end).sort().pop()).replace(/^\d+ /, '')) : ''}${meta}</span></summary>${inner}</details>`;
+}
+
 /** One statement in a list. A CSV, or a statement that does not add up, opens a sheet when tapped. */
 function rowHtml(s) {
   const mark = s.csv ? s.csv.mark : s.ok ? '✓' : '⚠';
   const tap = s.csv || !s.ok || s.held;
   const state = s.held ? ' · left out of your figures' : s.acked ? ' · kept, checked by you' : '';
-  return `<li class="${tap ? 'tap' : ''}" ${tap ? `data-act="stmt-open" data-v="${esc(s.id)}"` : ''}><div class="who"><b>${when(s)}</b><span>${esc(s.name)}${s.csv ? ' · CSV' : ''}${s.count ? ' · ' + s.count + ' transactions' : ''}${state}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}${tap && !s.csv ? '<span>Tap to review</span>' : ''}</div><span class="${s.csv ? markCls(mark) : s.ok ? 'in' : 'out'}" data-act="marks-help" style="font-size:18px;cursor:pointer" title="${esc(s.csv ? MARK_TEXT[mark] || '' : s.ok ? 'Checked' : 'Does not add up')}">${mark}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`;
+  return `<li class="${tap ? 'tap' : ''}" ${tap ? `data-act="stmt-open" data-v="${esc(s.id)}"` : ''}><div class="who"><b>${when(s)}</b><span>${esc(s.name)}${s.csv ? (s.csv.src === 'pdf' ? ' · PDF, other bank' : ' · CSV') : ''}${s.count ? ' · ' + s.count + ' transactions' : ''}${state}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}${tap && !s.csv ? '<span>Tap to review</span>' : ''}</div><span class="${s.csv ? markCls(mark) : s.ok ? 'in' : 'out'}" data-act="marks-help" style="font-size:18px;cursor:pointer" title="${esc(s.csv ? MARK_TEXT[mark] || '' : s.ok ? 'Checked' : 'Does not add up')}">${mark}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`;
 }
 
 /** CSV statements, by the account they were given. Ones with no account yet wait at the top, out of every figure. */
@@ -56,11 +66,13 @@ function csvSection(list) {
   if (!list.length) return '';
   const wait = list.filter(s => !s.csv.acct), by = {};
   list.filter(s => s.csv.acct).forEach(s => { (by[s.csv.acct.id] = by[s.csv.acct.id] || { acct: s.csv.acct, list: [] }).list.push(s); });
-  return `${wait.length ? `<h2>CSV files waiting for an account name (${wait.length})</h2><div class="card"><p class="muted small" style="margin:0 0 8px">These were read but are not in your figures until you say which account they are from.</p><ul class="list">${wait.map(s => rowHtml(s).replace('<button class="btn ghost slim" data-act="ignore"', `<button class="btn slim" data-act="csv-name" data-v="${esc(s.id)}">Name</button><button class="btn ghost slim" data-act="ignore"`)).join('')}</ul></div>` : ''}
-    ${Object.values(by).map(g => `<h2>${esc(g.acct.name)} (${g.list.length}) <span class="muted small">· CSV · ${g.acct.kind === 'card' ? 'credit card' : 'current account'}${g.acct.link ? ', same account as your PDFs' : ''}</span></h2><div class="card"><ul class="list">${g.list.slice().reverse().map(rowHtml).join('')}</ul></div>`).join('')}`;
+  return `${wait.length ? grp('csv-wait', 'CSV files waiting for an account name', wait, `<div class="card"><p class="muted small" style="margin:0 0 8px">These were read but are not in your figures until you say which account they are from.</p><ul class="list">${wait.map(s => rowHtml(s).replace('<button class="btn ghost slim" data-act="ignore"', `<button class="btn slim" data-act="csv-name" data-v="${esc(s.id)}">Name</button><button class="btn ghost slim" data-act="ignore"`)).join('')}</ul></div>`) : ''}
+    ${Object.values(by).map(g => grp('acct-' + g.acct.id, esc(g.acct.name), g.list, `<div class="card"><p class="muted small" style="margin:0 0 6px">${g.acct.kind === 'card' ? 'Credit card' : 'Current account'}${g.acct.link ? ', same account as your PDF statements' : ''}</p><ul class="list">${g.list.slice().reverse().map(rowHtml).join('')}</ul></div>`)).join('')}`;
 }
 
 export function renderData() {
+  // remember which lists you opened or closed
+  setTimeout(() => $('#view-data').querySelectorAll('details.grp').forEach(d => d.addEventListener('toggle', () => { const m = openMap(); m[d.dataset.grp] = d.open; store.set('openGroups', m); })), 0);
   const el = $('#view-data');
   const list = inScope();
   const cov = list.some(s => s.type !== 'csv') ? coverage(list) : null; // the coverage grid is for the statements that count; CSVs wait for account setup
@@ -87,8 +99,7 @@ export function renderData() {
     ${S.ignored.length ? `<div class="card small"><span class="muted">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app and left out when you add PDFs.</span> <button class="btn ghost slim" data-act="unignore">Use them again</button></div>` : ''}
     ${S.continuity && S.continuity.length ? `<div class="card notice small"><b>Check these CSV accounts:</b><br>${S.continuity.map(c => esc(c.text)).join('<br>')}</div>` : ''}
     ${csvSection(inScope().filter(s => s.type === 'csv'))}
-    ${groups.map(([type, label]) => { const list = inScope().filter(s => s.type === type).slice().reverse(); return list.length ? `<h2>${label} (${list.length})</h2>
-    <div class="card"><ul class="list">${list.map(rowHtml).join('')}</ul></div>` : ''; }).join('')}
+    ${groups.map(([type, label]) => { const list = inScope().filter(s => s.type === type).slice().reverse(); return list.length ? grp('t-' + type, label, list, `<div class="card"><ul class="list">${list.map(rowHtml).join('')}</ul></div>`) : ''; }).join('')}
     ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div>${s.id ? `<button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${S.txns.length && !S.demo ? `<div class="card notice good small"><b>Saved on this phone, encrypted${S.meta && S.meta.mode === 'pin' ? ' and locked with your passcode' : ''}.</b> The statement PDFs themselves are never saved.</div>` : ''}`;
 }

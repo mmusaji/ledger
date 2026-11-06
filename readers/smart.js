@@ -2,11 +2,13 @@
  * It knows nothing about any bank. It finds the transaction table from its header words and column
  * positions, reads the rows, then PROVES the result with arithmetic (running balances, printed totals).
  * If nothing can be proved it says so (confidence 'unverified'); if the sums disagree it fails.
- * Not wired into the app. Run it with tools/smart-eval.js.
+ * Used by the app only as a last resort for PDFs no bank-specific reader knows, and only when it can PROVE the result
+ * (js/pipeline.js). Test it with tools/smart-eval.js.
  * Input: pages = [[{str,x,y,w}]] from parser.extractPages (w = text width, optional).
  */
 (function (root) {
   'use strict';
+  const ENV = (typeof process !== 'undefined' && process.env) || {}; // Node-only debug switches; absent in the browser
   const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
   const MON = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
   const pad = n => String(n).padStart(2, '0');
@@ -273,7 +275,7 @@
     let best = null, anyTable = false, undated = false;
 
     ['strict', 'amount', 'text'].forEach((mode, level) => {
-      if (process.env.SMART_MODE && process.env.SMART_MODE !== mode) return;
+      if (ENV.SMART_MODE && ENV.SMART_MODE !== mode) return;
       const sc = scan(rows, mode, period);
       if (!sc.cols) return;
       anyTable = true;
@@ -311,7 +313,7 @@
         const heads = {}; real.forEach(t => { const k = t.desc.split(' ').slice(0, 2).join(' ').toLowerCase(); heads[k] = (heads[k] || 0) + 1; });
         const tidy = real.filter(t => heads[t.desc.split(' ').slice(0, 2).join(' ').toLowerCase()] > 1).length / real.length;
         res.score += Math.max(-3, Math.min(3, sem)) * 0.5 + (h.card && cardWords ? 1 : 0) + (!h.card && cardWords ? -1 : 0) + tidy * 0.5 + sc.spacing - level * 0.1;
-        if (process.env.SMART_DEBUG) console.log('  [mode]', mode, h.name, 'rows', real.length, 'conf', res.confidence, 'score', res.score.toFixed(2), 'tidy', tidy.toFixed(2), JSON.stringify(Object.fromEntries(Object.entries(res.checks).map(([k, v]) => [k, v.msg]))));
+        if (ENV.SMART_DEBUG) console.log('  [mode]', mode, h.name, 'rows', real.length, 'conf', res.confidence, 'score', res.score.toFixed(2), 'tidy', tidy.toFixed(2), JSON.stringify(Object.fromEntries(Object.entries(res.checks).map(([k, v]) => [k, v.msg]))));
         if (!best || res.score > best.res.score) best = { h, tx: real, res, sc, pr, mode };
       });
     });
