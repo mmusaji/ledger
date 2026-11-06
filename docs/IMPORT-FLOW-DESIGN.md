@@ -1,0 +1,80 @@
+# Import flow: PDFs and CSVs, accounts, duplicates (design, branch `smart-parser`)
+
+Status: agreed direction, not built. Decisions made with the user on 2026-11-06 are marked **Decided**.
+Rule for everything below: existing readers and the way the app works today are not changed unless a stage says so; each stage is one commit and can be rolled back.
+
+## 1. The flow
+
+1. **Add statements.** One button. The chooser accepts `.pdf` and `.csv`. Phones cannot pick a folder, only "select all" inside one (as today). The Share-sheet route (manifest + service worker) also accepts CSV.
+2. **Choose files.** Any mix of PDFs and CSVs.
+3. **Route by the file's own bytes** (`%PDF`, or text with delimiters); the extension is only a hint. A PDF renamed `.csv` is refused.
+4. **Read (staged, nothing stored yet).**
+   - PDF: the existing readers first, unchanged. Only if every existing reader says "not mine" does the generic PDF reader (`readers/smart.js`) try, and only a **verified** result is accepted (see section 5).
+   - CSV: `readers/csv.js`.
+5. **A file that cannot be read is not kept.** No entry is stored. The user sees one **result sheet** at the end of the batch ("Added 12 · already had 3 · couldn't read 2"), each unreadable file with a plain reason (scan, not a statement, unsupported layout, totals do not add up) and "Try the CSV of the same statement from your bank". A dismissible **Last import** card stays on the Statements screen until the next import. PDFs that read but have a total mismatch keep their warning, as today (existing behaviour).
+6. **Name the account (new layouts only).** See section 3.
+7. **Validate before storing.** See section 4.
+8. **Commit the batch at once**, then offer **Undo last import**.
+9. **Statements list is collapsed** (section 6).
+
+## 2. What the user sees for CSV rows that could not be proven (Decided: a small, clear mark)
+
+| Mark | Meaning | Words shown when tapped |
+|---|---|---|
+| ✓ | checked | "The totals add up against the statement" (PDF), or "The running balance adds up on every row" (CSV with a Balance column). |
+| ◐ | not checked | "This CSV has no balance column, so the totals cannot be checked. The amounts are shown exactly as your bank's file gives them." |
+| ⚠ | problem | The existing warning text. |
+
+A bank's CSV carries no printed totals, so ◐ is normal for Monzo and card exports. It is information, not an error.
+
+## 3. Naming accounts from CSVs (and unknown-bank PDFs)
+
+A CSV carries no bank name. Resolution order:
+1. **Known layout** (column set plus an account hint such as card digits or card member): attach silently to the account it was tied to before.
+2. **New layout**: one question per new layout per batch, not per file. "Monzo-style current account, 731 rows, 1 Nov 2025 to 6 Nov 2026. Which account is this?" Choices: an existing account of the same kind, or a new account (name prefilled from the file name, Household or Personal through the existing role question). Card or current account is pre-filled from the reader (`accountType`) and editable.
+3. **Several cards in one file** (`activity.csv` has two card members): one question naming each card.
+4. The layout, the account hint and the chosen account are remembered, so later files go straight in.
+
+Data model: a first-class **account list** (name, card or current, role, remembered layouts). The existing readers fill it automatically, so Santander, Amex, Tesco and Monzo keep working. CSV-only accounts use a generic statement type linked to their account.
+
+## 4. Checks before anything is stored (Decided: overlaps must not be duplicated)
+
+- **Same file**: same content hash is skipped (as today).
+- **Same transactions**: match incoming rows to what the account already holds by date + amount (+ normalised description), **as a multiset** so two genuine identical purchases on one day are kept. Fully known: skipped. Partly known (for example a 13-month CSV over months already loaded from PDFs): only the new rows are added, and the result sheet says how many were new and how many were already there.
+- **Source precedence**: a verified PDF wins over an unproven CSV for the same period.
+- **Sanity**: no future dates, nothing before 2000, GBP only, an implausible span flagged.
+- **Account type**: a card CSV cannot be attached to a current account (or the reverse) without a warning.
+- **Continuity**: a CSV with a balance should start where the account's stored balance left off; a break is shown as a gap, not hidden.
+- **All-or-nothing batch** with Undo.
+
+## 5. Generic PDF reader (Decided: yes, as an improvement to the current PDF reader)
+
+`readers/smart.js` becomes a fallback, behind its own stage and an off switch:
+- runs only after every existing reader says "not mine";
+- only a **verified** result is accepted (the PDF's own arithmetic proves it); unverified or failed means "could not read" and the file is not kept;
+- month-first dates, dollars, placeholders and statements whose own summary does not add up are refused;
+- an unknown bank goes through the same account-naming question as a CSV.
+On the current samples this reads Barclays, HSBC, first direct, NatWest and Revolut PDFs that no existing reader supports. It must not change any result for a statement an existing reader handles (checked: 4 of 4 identical today).
+
+## 6. Statements screen (Decided: minimise the list)
+
+One collapsed row per account with the count and coverage, e.g. `Amex (14) ✓ Nov 25 → Oct 26`; opening a row lists its files. The coverage grid stays on top. The "Not used" list is replaced by the Last import card.
+
+## 7. Testing
+
+- A Node harness for the whole pipeline (stage, validate, commit, undo) using the synthetic fixtures and real samples kept outside the repo: duplicates, PDF + CSV for the same account, a 13-month CSV over loaded months, a failing PDF, a scan, naming and layout memory, Undo.
+- Existing suites must stay green; PDF results for existing readers must not change.
+- **Decided**: this stays on the `smart-parser` branch for now; testing live comes later.
+
+## 8. Before it ever goes live (not needed for local testing)
+
+The saved data lives in an IndexedDB database called `ledger`, browser storage and a `ledger-inbox` cache. Another build on the same site (`mmusaji.github.io`) would share them and could corrupt live data. Before any live test: namespace those names, give the test build its own app name, icon and cache names, and decide between a migration and re-adding statements.
+
+## 9. Stages (one commit each)
+
+1. File routing + staged import pipeline + result sheet + Last import card (existing PDF readers and the CSV reader).
+2. Account list + naming flow + layout memory.
+3. Overlap and duplicate checks, source precedence, continuity, Undo.
+4. Collapsed Statements screen.
+5. Generic PDF reader as the verified-only fallback, with its off switch.
+6. Pipeline test harness (grows with each stage).
