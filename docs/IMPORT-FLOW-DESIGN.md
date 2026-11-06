@@ -73,8 +73,8 @@ The saved data lives in an IndexedDB database called `ledger`, browser storage a
 ## 9. Stages (one commit each)
 
 1. File routing + staged import pipeline + result sheet + Last import card (existing PDF readers and the CSV reader). **Built.** See the notes below.
-2. Account list + naming flow + layout memory.
-3. Overlap and duplicate checks, source precedence, continuity, Undo.
+2. Account list + naming flow + layout memory. **Built.**
+3. Overlap and duplicate checks, source precedence, continuity, Undo. **Built.**
 4. Collapsed Statements screen.
 5. Generic PDF reader as the verified-only fallback, with its off switch.
 6. Pipeline test harness (grows with each stage).
@@ -87,3 +87,13 @@ The saved data lives in an IndexedDB database called `ledger`, browser storage a
 - PDFs: the existing readers are untouched. What changed is that a PDF they cannot read is no longer saved as a "Not used" row; it appears in the result sheet with the hint to try the CSV. A money statement that found no transactions and does not add up is treated as not read. A PDF read with a total that does not match keeps its existing ⚠.
 - The "Not used" list on the Statements screen still shows files saved by earlier versions.
 - Share-target: the manifest field is now `files` (accepts PDF and CSV); the service worker still accepts the old `pdfs` field. Installed copies of the app need to be reinstalled to pick up the new manifest.
+
+### Stage 2 and 3 notes (built)
+- **Account book** (`js/book.js`, saved in the encrypted vault): accounts you named, which account each CSV file belongs to, and which account each CSV *layout* (column names only) was given. A known layout is attached silently and shown in the result; a new one is asked about once per import. Cancelling the question cancels the whole import and nothing is saved. "Decide later" leaves those files waiting, out of the figures.
+- A CSV can be named as a **new** account (card, or current account with Household/Personal) or as **the same account as one known from PDFs** (Santander, Monzo, Amex, Tesco). In the second case the two are combined.
+- Named CSVs reach the figures: cards as card spend, current accounts as current accounts (a Monzo `Type` column of "Pot transfer" is treated as a pot move). A card's payments from the bank are not counted as spend again once the CSV covers the month they pay for; the account's "payments show as" words find them.
+- **Overlaps** (worked out every time the picture is rebuilt, so nothing is deleted): a PDF that adds up is the whole statement for its dates and beats a CSV; a CSV proven by its balance beats one that is not; otherwise rows with the same date and amount are counted once (a multiset, so two identical coffees stay two). Rows inside an overlap that match nothing are kept and reported as "differ".
+- **Continuity**: gaps of more than 3 days and balances that do not carry over between CSV files are listed on the Statements screen.
+- **Import is all-or-nothing** and has **Undo** (files, accounts and layouts added by the last import).
+- **Statements that read but do not add up** open a review sheet: the size of the difference, what keeping or leaving them out does to the figures, and Keep / Leave out / Remove. Until you decide they are counted (as before) and the Dashboard and Reports show a notice. The best fix is to add the CSV of the same statement.
+- A tap on any mark opens "What the marks mean". Names of files that could not be read are never saved (only a count).

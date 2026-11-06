@@ -74,6 +74,7 @@
     ['state', /^(state|status)$/],
     ['flag', /^(debit credit flag|debit credit indicator|credit debit flag|credit debit indicator|dr cr|cr dr|dr cr flag|dr cr indicator|debit or credit|credit or debit|transaction indicator|d c indicator)$/],
     ['fee', /^fees?$/],
+    ['ttype', /^(type|payment type)$/],
     ['cur', /^currency$/],
     ['bal', /^((running|account|closing|available|ledger) )?(balance|bal)( after)?( gbp)?$/],
     ['in', /^(paid in|money in|credit|credits|credit amount|credit amt|deposits?|payments? in|amount in|amount credited|received|in)$/],
@@ -268,7 +269,7 @@ const CARD_WORDS = /payment received|payment[ -]*thank|thank you|annual fee|late
         if (b) { raw.push({ checkpoint: true, bal: b.v, line: i + 1, date: d }); continue; }   // "brought forward" style row
         skipped.notTransaction++; continue;
       }
-      raw.push({ line: i + 1, d, desc, a, mi, mo, b, f, dir, mark: a && a.mark || mi && mi.mark || mo && mo.mark || '' });
+      raw.push({ line: i + 1, d, desc, ttype: get('ttype').trim(), a, mi, mo, b, f, dir, mark: a && a.mark || mi && mi.mark || mo && mo.mark || '' });
     }
     if (curSeen.size && [...curSeen].some(c => c !== 'GBP')) return fail('This file has amounts in a currency other than pounds, which is not supported.');
     const data = raw.filter(r => !r.checkpoint);
@@ -343,7 +344,7 @@ const CARD_WORDS = /payment received|payment[ -]*thank|thank you|annual fee|late
         if (!best || score > best.score) best = { h, res, oname, score };
       });
     });
-    const tx = data.map(r => ({ date: r.date, desc: r.desc, amount: best.h.f(r), balance: r.bal, payee: r.desc.slice(0, 40) }));
+    const tx = data.map(r => ({ date: r.date, desc: r.desc, amount: best.h.f(r), balance: r.bal, payee: r.desc.slice(0, 40), type: r.ttype || undefined }));
     out.txns = tx; out.rows = tx.length; out.convention = best.h.name;
     const checks = {}; out.checks = checks;
     if (hasBal && best.res.ok + best.res.bad === 0) {

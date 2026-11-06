@@ -1,13 +1,16 @@
 /* Adding statements: the phone's file chooser and files sent with Share. PDFs and CSVs are told apart by what is inside
- * them, read in memory, then discarded. A file that cannot be read is not kept; the result sheet says why. */
+ * them, read in memory, then discarded. Everything is staged first and saved in one go at the end: if you cancel, or
+ * something goes wrong, nothing from that import is kept. A file that cannot be read is never kept. */
 import { CSVR, P, RD } from './deps.js';
+import { askAccount } from './accountsheet.js';
+import { applyChoice, bookOf } from './book.js';
 import { checkNewAccounts } from './accounts.js';
 import { importSheet } from './importview.js';
 import { rebuild } from './model.js';
 import { readOne, summarise } from './pipeline.js';
 import { S } from './state.js';
 import { render, status, statusLine, toast } from './ui.js';
-import { $ } from './util.js';
+import { $, store } from './util.js';
 import { PARSER_VERSION, ensureKey, saveVault } from './vault.js';
 
 const WANTED = f => /\.(pdf|csv|txt)$/i.test(f.name) || /^(application\/pdf|text\/csv|application\/vnd\.ms-excel)$/.test(f.type);
@@ -21,29 +24,66 @@ async function addLocalFiles(list) {
   if (S.demo && S.meta) return toast('This is the sample-data demo, so your own statements are not touched. Open the app without ?demo to add statements.');
   if (S.loading) return;
   S.loading = true; S.progress = 0; render();
-  const outcomes = [];
+  const outcomes = [], staged = {}; let cancelled = false, sum = null;
   try {
     await ensureKey();
-    const ctx = { files: S.files, ignored: S.ignored, version: PARSER_VERSION, CSVR, RD, extractPages: bytes => P.extractPages(window.pdfjsLib, bytes) };
+    const ctx = { files: Object.assign({}, S.files), ignored: S.ignored, version: PARSER_VERSION, CSVR, RD, extractPages: bytes => P.extractPages(window.pdfjsLib, bytes) };
     for (let i = 0; i < fileList.length; i++) {
       status(`Reading ${i + 1}/${fileList.length}`); S.progress = (i + 1) / fileList.length;
       const bar = $('#progress div'); if (bar) bar.style.width = (S.progress * 100) + '%';
       const o = await readOne(fileList[i], ctx); outcomes.push(o);
-      if (o.status === 'added') { S.files[o.id] = o.entry; if (outcomes.filter(x => x.status === 'added').length % 5 === 0) await saveVault(); }
+      if (o.status === 'added') { staged[o.id] = o.entry; ctx.files[o.id] = o.entry; }
     }
+    // CSV files do not say which account they are from. A layout seen before is attached silently; a new one is asked about once.
+    const work = JSON.parse(JSON.stringify(bookOf(S.book))); const created = [], newLayouts = [], roles = {};
+    const csv = outcomes.filter(o => o.status === 'added' && o.entry.result.type === 'csv'), bySig = {};
+    csv.forEach(o => { (bySig[o.entry.result.sig] = bySig[o.entry.result.sig] || []).push(o); });
+    const nameOf = id => (work.accounts.find(a => a.id === id) || {}).name;
+    for (const [sig, group] of Object.entries(bySig)) {
+      const known = work.layouts[sig];
+      if (known && nameOf(known)) { group.forEach(o => { work.assign[o.id] = known; o.attached = nameOf(known); o.remembered = true; }); continue; }
+      S.loading = false; render();
+      const r0 = group[0].entry.result;
+      const ans = await askAccount({ files: group.map(o => ({ name: o.name, rows: o.rows, period: o.period })), kind: r0.accountType, why: r0.accountTypeWhy, book: work });
+      if (ans === null) { cancelled = true; break; }
+      if (ans === 'skip') continue;
+      const { accountId, created: c } = applyChoice(work, ans);
+      if (c) { created.push(c.id); if (c.kind === 'current' && !c.link) roles[c.id] = c.role; }
+      work.layouts[sig] = accountId; newLayouts.push(sig);
+      group.forEach(o => { work.assign[o.id] = accountId; o.attached = nameOf(accountId); });
+    }
+    if (cancelled) { toast('Import cancelled. Nothing was saved.'); outcomes.length = 0; return; }
+    // commit everything at once
+    Object.assign(S.files, staged); S.book = work;
+    if (Object.keys(roles).length) { Object.entries(roles).forEach(([id, role]) => { S.accounts[id] = { role }; }); if (!S.demo) store.set('accounts', S.accounts); }
     S.lastSync = new Date().toISOString(); S.demo = false;
-    S.lastImport = summarise(outcomes);
-    await saveVault(); rebuild();
-  } catch (e) { toast(e.message); }
+    rebuild();
+    outcomes.forEach(o => { if (o.status === 'added' && S.overlap && S.overlap[o.id]) o.overlap = S.overlap[o.id]; });
+    sum = Object.assign(summarise(outcomes), { undo: Object.keys(staged).length ? { files: Object.keys(staged), accounts: created, layouts: newLayouts } : null });
+    // a batch that changed nothing (everything already known) does not replace the last real import, so its Undo stays
+    if (sum.added.length || sum.failed.length) S.lastImport = sum;
+    await saveVault();
+  } catch (e) { toast('Nothing was saved: ' + e.message); outcomes.length = 0; }
   finally {
     S.loading = false; statusLine(); render();
-    if (S.lastImport && outcomes.length) {
-      // the result is shown first; the "household or personal?" question for a new account waits until it is closed
-      S.sheetLocked = false; $('#sheet-body').innerHTML = importSheet(S.lastImport);
+    if (sum && outcomes.length) {
+      // the result is shown first; the "household or personal?" question for a new PDF account waits until it is closed
+      S.sheetLocked = false; $('#sheet-body').innerHTML = importSheet(sum);
       await new Promise(res => { const d = $('#sheet'); d.addEventListener('close', res, { once: true }); d.showModal(); });
     }
     await checkNewAccounts();
   }
+}
+
+/** Take back the last import: its files, the accounts it created and the layouts it taught. Nothing else changes. */
+export async function undoLastImport() {
+  const u = S.lastImport && S.lastImport.undo; if (!u) return;
+  u.files.forEach(id => { delete S.files[id]; delete S.book.assign[id]; });
+  S.book.accounts = S.book.accounts.filter(a => !u.accounts.includes(a.id));
+  u.layouts.forEach(sig => { delete S.book.layouts[sig]; });
+  u.accounts.forEach(id => { delete S.accounts[id]; });
+  if (!S.demo) store.set('accounts', S.accounts);
+  S.lastImport = null; await saveVault(); rebuild(); render(); toast('Last import undone');
 }
 
 /** Files sent with the phone's Share menu (for example from the Google Drive app) are parked briefly by the

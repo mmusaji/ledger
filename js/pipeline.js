@@ -8,6 +8,8 @@
  *   ignored  removed from the app earlier and left out
  *   failed   could not be read: NOT kept, with a plain reason and what to try instead
  */
+import { layoutSig } from './book.js';
+
 export const HINT_CSV = 'Download the CSV of the same statement from your bank and add that instead.';
 
 export const fileIdOf = async bytes => {
@@ -32,7 +34,7 @@ export const MARK_TEXT = { '✓': 'checked: every row adds up against the runnin
 export function csvResult(r, id) {
   return { type: 'csv', institution: r.institution, period: r.period, txns: r.txns, ok: r.confidence === 'verified', confidence: r.confidence,
     accountType: r.accountType || 'unknown', accountTypeWhy: r.accountTypeWhy || '', problems: r.problems || [], notes: r.notes || [],
-    convention: r.convention || '', rows: r.txns.length, account: { id: 'csvfile:' + id.slice(6) }, holders: [], mark: csvMark(r) };
+    convention: r.convention || '', rows: r.txns.length, sig: layoutSig(r), account: { id: 'csvfile:' + id.slice(6) }, holders: [], mark: csvMark(r) };
 }
 
 /** `ctx`: { files, ignored, version, CSVR, RD, extractPages(bytes) }  `file`: { name, arrayBuffer() }  */
@@ -73,7 +75,7 @@ export function summarise(outcomes, at) {
   const by = s => outcomes.filter(o => o.status === s);
   return {
     at: at || new Date().toISOString(),
-    added: by('added').map(o => ({ name: o.name, kind: o.kind, mark: o.mark, rows: o.rows, period: o.period, label: o.label })),
+    added: by('added').map(o => ({ name: o.name, kind: o.kind, mark: o.mark, rows: o.rows, period: o.period, label: o.label, acct: o.attached || null, remembered: !!o.remembered, overlap: o.overlap ? { dup: o.overlap.dup, differs: o.overlap.differs, with: o.overlap.overlapWith } : null })),
     known: by('known').length, ignored: by('ignored').length,
     failed: by('failed').map(o => ({ name: o.name, why: o.why, hint: o.hint }))
   };

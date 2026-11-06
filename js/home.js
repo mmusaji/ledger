@@ -4,6 +4,7 @@ import { GROUP_OF } from './deps.js';
 import { accIdOf, accountName, activeScope, balanceSeries, inRange, isCurrent, isSpend, oneOff, personalAccounts, rangeFor, scopeStatements, scopeTxns } from './model.js';
 import { cycleShort } from './period.js';
 import { S } from './state.js';
+import { figuresNotice } from './notices.js';
 import { emptyState } from './ui.js';
 import { $, esc, gbp, gbp0, nice, niceShort, ordinal, personOf, sum } from './util.js';
 
@@ -63,7 +64,7 @@ export function renderHome() {
   el.innerHTML = `
     ${S.demo ? `<div class="card notice small">You are looking at <b>invented sample data</b>. Add your statements from the Statements tab.</div>` :
       `<div class="row small"><span class="muted">${S.loading ? 'Reading…' : 'Updated ' + esc(synced)}</span><button class="btn ghost slim" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add statements</button></div>`}
-    ${scopeBar()}
+    ${scopeBar()}${figuresNotice()}
     <div class="chips" role="tablist">${pc.map(([k, l]) => `<button class="chip ${S.period === k ? 'on' : ''}" data-act="period" data-v="${k}">${l}</button>`).join('')}</div>
     <div class="muted small">${esc(r.label)}<br>${mz ? `${esc(scAcc ? accountName(scAcc) : 'Account')} to ${(() => { const e = scopeStatements().map(s => s.period.end).sort().pop(); return e ? niceShort(e) : '—'; })()}` : `Bank to ${latestOf('santander') ? niceShort(latestOf('santander')) : '—'} · Amex to ${latestOf('amex') ? niceShort(latestOf('amex')) : '—'} · Tesco to ${latestOf('tesco') ? niceShort(latestOf('tesco')) : '—'}`}</div>
     ${(r.outside || []).length ? `<div class="card notice small">${r.outside.length} pay month${r.outside.length === 1 ? ' is' : 's are'} left out because not every household account has statements for ${r.outside.length === 1 ? 'it' : 'them'}.</div>` : ''}

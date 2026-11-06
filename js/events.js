@@ -3,13 +3,14 @@ import { loadDemo } from './demo.js';
 import { GROUP_OF } from './deps.js';
 import { renderHome } from './home.js';
 import { offerTransferRules, setRole } from './accounts.js';
-import { checkInbox, chooseLocalFiles } from './ingest.js';
+import { checkInbox, chooseLocalFiles, undoLastImport } from './ingest.js';
 import { rangeFor, rebuild, recategorise } from './model.js';
 import { renderPay } from './pay.js';
 import { renderReports } from './reports.js';
 import { renderSettings } from './settings.js';
 import { S, blankFilter } from './state.js';
 import { renderData } from './statements.js';
+import { marksHelp, nameFiles, openStatement } from './stmtsheet.js';
 import { openTxn, saveTxn } from './txn.js';
 import { go, render, statusLine, toast } from './ui.js';
 import { $, store } from './util.js';
@@ -27,6 +28,10 @@ export function bindEvents() {
         case 'go-settings': return go('settings');
         case 'demo': return loadDemo();
         case 'add-local': return chooseLocalFiles();
+        case 'stmt-open': return openStatement(v);
+        case 'marks-help': return marksHelp();
+        case 'csv-name': return nameFiles([v], true);
+        case 'undo-import': if (!confirm('Undo the last import? The files it added, and any accounts it created, are removed. Nothing else changes.')) return; if ($('#sheet').open) $('#sheet').close(); return undoLastImport();
         case 'dismiss-import': S.lastImport = null; await saveVault(); return renderData();
         case 'ignore': {
           if (!confirm('Stop using this file in the app? (The PDF itself is untouched wherever you keep it.)')) return;

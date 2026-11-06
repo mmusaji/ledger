@@ -2,7 +2,7 @@
 import { scopeBar } from './charts.js';
 import { lastImportCard } from './importview.js';
 import { MARK_TEXT } from './pipeline.js';
-import { accIdOf, activeScope, scopeStatements } from './model.js';
+import { accIdOf, activeScope, isBankStmt, scopeStatements } from './model.js';
 import { S } from './state.js';
 import { $, MON, addDays, daysBetween, esc, gbp, isoOf, monthLabel, nice, niceShort, pad, today } from './util.js';
 
@@ -12,7 +12,7 @@ const TYPES = [['santander', 'Santander', 5], ['amex', 'Amex', 19], ['tesco', 'T
  *  account = just that account. Statements for an account that has no role yet are not shown in either. */
 function inScope() {
   const sc = activeScope(); const own = new Set(scopeStatements().map(s => s.id));
-  return S.statements.filter(s => (s.type === 'santander' || s.type === 'monzo') ? own.has(s.id) : sc === 'household');
+  return S.statements.filter(s => isBankStmt(s) ? own.has(s.id) : sc === 'household');
 }
 
 function coverage(list) {
@@ -40,6 +40,26 @@ function coverage(list) {
   return { months, rows, missing, gaps };
 }
 
+const markCls = m => ({ '✓': 'in', '○': 'muted' }[m] || 'out');
+const when = s => s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end));
+
+/** One statement in a list. A CSV, or a statement that does not add up, opens a sheet when tapped. */
+function rowHtml(s) {
+  const mark = s.csv ? s.csv.mark : s.ok ? '✓' : '⚠';
+  const tap = s.csv || !s.ok || s.held;
+  const state = s.held ? ' · left out of your figures' : s.acked ? ' · kept, checked by you' : '';
+  return `<li class="${tap ? 'tap' : ''}" ${tap ? `data-act="stmt-open" data-v="${esc(s.id)}"` : ''}><div class="who"><b>${when(s)}</b><span>${esc(s.name)}${s.csv ? ' · CSV' : ''}${s.count ? ' · ' + s.count + ' transactions' : ''}${state}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}${tap && !s.csv ? '<span>Tap to review</span>' : ''}</div><span class="${s.csv ? markCls(mark) : s.ok ? 'in' : 'out'}" data-act="marks-help" style="font-size:18px;cursor:pointer" title="${esc(s.csv ? MARK_TEXT[mark] || '' : s.ok ? 'Checked' : 'Does not add up')}">${mark}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`;
+}
+
+/** CSV statements, by the account they were given. Ones with no account yet wait at the top, out of every figure. */
+function csvSection(list) {
+  if (!list.length) return '';
+  const wait = list.filter(s => !s.csv.acct), by = {};
+  list.filter(s => s.csv.acct).forEach(s => { (by[s.csv.acct.id] = by[s.csv.acct.id] || { acct: s.csv.acct, list: [] }).list.push(s); });
+  return `${wait.length ? `<h2>CSV files waiting for an account name (${wait.length})</h2><div class="card"><p class="muted small" style="margin:0 0 8px">These were read but are not in your figures until you say which account they are from.</p><ul class="list">${wait.map(s => rowHtml(s).replace('<button class="btn ghost slim" data-act="ignore"', `<button class="btn slim" data-act="csv-name" data-v="${esc(s.id)}">Name</button><button class="btn ghost slim" data-act="ignore"`)).join('')}</ul></div>` : ''}
+    ${Object.values(by).map(g => `<h2>${esc(g.acct.name)} (${g.list.length}) <span class="muted small">· CSV · ${g.acct.kind === 'card' ? 'credit card' : 'current account'}${g.acct.link ? ', same account as your PDFs' : ''}</span></h2><div class="card"><ul class="list">${g.list.slice().reverse().map(rowHtml).join('')}</ul></div>`).join('')}`;
+}
+
 export function renderData() {
   const el = $('#view-data');
   const list = inScope();
@@ -47,7 +67,7 @@ export function renderData() {
   const repays = S.txns.filter(t => t.repayStatus).slice(-6).reverse();
   const lastIsa = S.isa[S.isa.length - 1], lastPen = S.pension[S.pension.length - 1];
   const badge = c => ({ ok: '<span class="cell ok">✓</span>', chk: '<span class="cell chk">⚠</span>', miss: '<span class="cell miss">✗</span>', due: '<span class="cell na">·</span>' })[c];
-  const groups = [['santander', 'Joint account (Santander)'], ['monzo', 'Monzo personal account'], ['amex', 'Amex'], ['tesco', 'Tesco credit card'], ['payslip', 'Payslips'], ['moneyfarm', 'Moneyfarm ISA'], ['aviva', 'Pension'], ['csv', 'CSV statements, waiting for account setup']];
+  const groups = [['santander', 'Joint account (Santander)'], ['monzo', 'Monzo personal account'], ['amex', 'Amex'], ['tesco', 'Tesco credit card'], ['payslip', 'Payslips'], ['moneyfarm', 'Moneyfarm ISA'], ['aviva', 'Pension']];
   el.innerHTML = `
     ${scopeBar()}
     <h2>Add statements</h2>
@@ -59,14 +79,16 @@ export function renderData() {
     ${cov ? `<h2>Statement coverage</h2>
     <div class="card"><div class="grid"><span></span>${cov.months.map(m => `<span class="h">${MON[+m.slice(5) - 1]}</span>`).join('')}
       ${cov.rows.map(r => `<span>${esc(r.label)}</span>${r.cells.map(badge).join('')}`).join('')}</div>
-      <p class="muted small" style="margin:10px 0 0">✓ read and adds up · ⚠ read, but a total doesn't match · ✗ missing · · not due yet</p>
+      <p class="muted small" style="margin:10px 0 0">✓ read and adds up · ⚠ read, but a total doesn't match · ✗ missing · · not due yet · <a href="#" data-act="marks-help">What do the marks mean?</a></p>
       <div class="small" style="margin-top:6px">Moneyfarm: ${lastIsa ? `latest to ${nice(lastIsa.period.end)} ${lastIsa.ok ? '✓' : '⚠'}` : 'none'} · Pension: ${lastPen ? `annual to ${nice(lastPen.period.end)} ${lastPen.ok ? '✓' : '⚠'}` : 'none'}</div></div>
     ${cov.missing.length || cov.gaps.length ? `<div class="card notice small">${cov.missing.length ? `<b>Missing:</b> ${cov.missing.map(esc).join(', ')}.` : ''}${cov.gaps.length ? `<br><b>Gap in bank statements:</b> ${cov.gaps.map(esc).join('; ')}.` : ''}</div>` : `<div class="card notice good small">Everything up to date.</div>`}
     ${repays.length ? `<h2>Card repayments from the joint account</h2><div class="card"><ul class="list">${repays.map(t => `<li class="tap" data-act="txn" data-v="${t.key}"><div class="who"><b>${/AMERICAN EXP|AMEX/i.test(t.desc) ? 'Amex' : 'Tesco'} · paid ${niceShort(t.date)}</b><span>${t.repayStatus === 'matched' ? 'matches the card statement balance' : t.repayStatus === 'covered' ? 'card statements loaded, no exact balance match' : 'no card statement yet: counted as spending'}</span></div><span class="${t.repayStatus === 'matched' ? 'in' : t.repayStatus === 'covered' ? 'muted' : 'out'}">${gbp(-t.amount)} ${t.repayStatus === 'matched' ? '✓' : '?'}</span></li>`).join('')}</ul></div>` : ''}` : ''}
 
     ${S.ignored.length ? `<div class="card small"><span class="muted">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app and left out when you add PDFs.</span> <button class="btn ghost slim" data-act="unignore">Use them again</button></div>` : ''}
+    ${S.continuity && S.continuity.length ? `<div class="card notice small"><b>Check these CSV accounts:</b><br>${S.continuity.map(c => esc(c.text)).join('<br>')}</div>` : ''}
+    ${csvSection(inScope().filter(s => s.type === 'csv'))}
     ${groups.map(([type, label]) => { const list = inScope().filter(s => s.type === type).slice().reverse(); return list.length ? `<h2>${label} (${list.length})</h2>
-    <div class="card">${type === 'csv' ? '<p class="muted small" style="margin:0 0 8px">Read from CSV files. They are not in your figures yet: the next step is giving each one an account name. <b>✓</b> checked against the running balance · <b>○</b> read, not checked (no balance in the file) · <b>⚠</b> a problem.</p>' : ''}<ul class="list">${list.map(s => `<li><div class="who"><b>${s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end))}</b><span>${esc(s.name)}${s.csv ? ' · ' + ({ card: 'card', current: 'current account' }[s.csv.accountType] || 'account type unclear') : ''}${s.count ? ' · ' + s.count + ' transactions' : ''}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}</div><span class="${s.csv ? ({ '✓': 'in', '○': 'muted' }[s.csv.mark] || 'out') : s.ok ? 'in' : 'out'}"${s.csv ? ' style="font-size:18px"' : ''}${s.csv ? ` title="${esc(MARK_TEXT[s.csv.mark] || '')}"` : ''}>${s.csv ? s.csv.mark : s.ok ? '✓' : '⚠'}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`).join('')}</ul></div>` : ''; }).join('')}
+    <div class="card"><ul class="list">${list.map(rowHtml).join('')}</ul></div>` : ''; }).join('')}
     ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div>${s.id ? `<button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${S.txns.length && !S.demo ? `<div class="card notice good small"><b>Saved on this phone, encrypted${S.meta && S.meta.mode === 'pin' ? ' and locked with your passcode' : ''}.</b> The statement PDFs themselves are never saved.</div>` : ''}`;
 }
