@@ -42,8 +42,8 @@ export function emptyState(target, what, pre = '') {
   target.innerHTML = `${pre}<div class="card empty">
     ${S.loading ? `<p><b>Reading your statements…</b></p><div class="progress" id="progress"><div style="width:${S.progress * 100}%"></div></div>` : `
     <p><b>${what || 'No statements yet'}</b></p>
-    <p class="muted small">Tap <b>Add PDFs</b>, open your statements folder (any folder on your phone, or Google Drive) and choose <b>Select all</b>. Only statements the app hasn't seen before are read.</p>
-    <button class="btn" data-act="add-local">Add PDFs</button>
+    <p class="muted small">Tap <b>Add statements</b>, open your statements folder (any folder on your phone, or Google Drive) and choose <b>Select all</b>. Only statements the app hasn't seen before are read.</p>
+    <button class="btn" data-act="add-local">Add statements</button>
     ${S.txns.length ? '' : `<div><button class="btn ghost" style="margin-top:10px" data-act="demo">Explore with sample data</button></div>`}`}
   </div>`;
 }

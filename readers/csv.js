@@ -4,7 +4,7 @@
  *   verified   the running balance adds up across every row that has one
  *   unverified rows were read but the file has no balance to prove them against (shown with a warning)
  *   failed     the arithmetic disagrees, or the file is not a UK-style statement, or rows could not be read safely
- * Not wired into the app. Run it with tools/csv-eval.js. Everything is treated as text: nothing in a cell is ever evaluated.
+ * Used by the app's import pipeline (js/pipeline.js); test it with tools/csv-eval.js. Everything is treated as text: nothing in a cell is ever evaluated.
  * Input: a string, or bytes (Uint8Array/Buffer). Money is whole pence; spend is negative.
  */
 (function (root) {

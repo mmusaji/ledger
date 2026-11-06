@@ -1,5 +1,7 @@
 /* Statements screen: what has been added, what is missing, card repayments. */
 import { scopeBar } from './charts.js';
+import { lastImportCard } from './importview.js';
+import { MARK_TEXT } from './pipeline.js';
 import { accIdOf, activeScope, scopeStatements } from './model.js';
 import { S } from './state.js';
 import { $, MON, addDays, daysBetween, esc, gbp, isoOf, monthLabel, nice, niceShort, pad, today } from './util.js';
@@ -41,18 +43,19 @@ function coverage(list) {
 export function renderData() {
   const el = $('#view-data');
   const list = inScope();
-  const cov = S.statements.length ? coverage(list) : null;
+  const cov = list.some(s => s.type !== 'csv') ? coverage(list) : null; // the coverage grid is for the statements that count; CSVs wait for account setup
   const repays = S.txns.filter(t => t.repayStatus).slice(-6).reverse();
   const lastIsa = S.isa[S.isa.length - 1], lastPen = S.pension[S.pension.length - 1];
   const badge = c => ({ ok: '<span class="cell ok">✓</span>', chk: '<span class="cell chk">⚠</span>', miss: '<span class="cell miss">✗</span>', due: '<span class="cell na">·</span>' })[c];
-  const groups = [['santander', 'Joint account (Santander)'], ['monzo', 'Monzo personal account'], ['amex', 'Amex'], ['tesco', 'Tesco credit card'], ['payslip', 'Payslips'], ['moneyfarm', 'Moneyfarm ISA'], ['aviva', 'Pension']];
+  const groups = [['santander', 'Joint account (Santander)'], ['monzo', 'Monzo personal account'], ['amex', 'Amex'], ['tesco', 'Tesco credit card'], ['payslip', 'Payslips'], ['moneyfarm', 'Moneyfarm ISA'], ['aviva', 'Pension'], ['csv', 'CSV statements, waiting for account setup']];
   el.innerHTML = `
     ${scopeBar()}
     <h2>Add statements</h2>
     <div class="card stack">
-      <button class="btn" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add PDFs</button>
-      <p class="muted small" style="margin:0">Opens your phone's file chooser. Choose any folder on your phone (such as Downloads) or open <b>Google Drive</b>, then open a statements folder, then <b>⋮ → Select all</b> and tap <b>Select</b>. <b>Or:</b> in the Google Drive app, select the PDFs, tap <b>Share → Ledger</b>. Choose the whole folder every time if you like: the app recognises statements it has already read and only reads new ones. Nothing is uploaded.</p>
+      <button class="btn" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add statements</button>
+      <p class="muted small" style="margin:0">Opens your phone's file chooser. Choose any folder on your phone (such as Downloads) or open <b>Google Drive</b>, then open a statements folder, then <b>⋮ → Select all</b> and tap <b>Select</b>. PDFs and CSV files both work, and can be mixed. <b>Or:</b> in the Google Drive app, select the statements, tap <b>Share → Ledger</b>. Choose the whole folder every time if you like: the app recognises statements it has already read and only reads new ones. Nothing is uploaded.</p>
     </div>
+    ${lastImportCard(S.lastImport)}
     ${cov ? `<h2>Statement coverage</h2>
     <div class="card"><div class="grid"><span></span>${cov.months.map(m => `<span class="h">${MON[+m.slice(5) - 1]}</span>`).join('')}
       ${cov.rows.map(r => `<span>${esc(r.label)}</span>${r.cells.map(badge).join('')}`).join('')}</div>
@@ -63,7 +66,7 @@ export function renderData() {
 
     ${S.ignored.length ? `<div class="card small"><span class="muted">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app and left out when you add PDFs.</span> <button class="btn ghost slim" data-act="unignore">Use them again</button></div>` : ''}
     ${groups.map(([type, label]) => { const list = inScope().filter(s => s.type === type).slice().reverse(); return list.length ? `<h2>${label} (${list.length})</h2>
-    <div class="card"><ul class="list">${list.map(s => `<li><div class="who"><b>${s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end))}</b><span>${esc(s.name)}${s.count ? ' · ' + s.count + ' transactions' : ''}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}</div><span class="${s.ok ? 'in' : 'out'}">${s.ok ? '✓' : '⚠'}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`).join('')}</ul></div>` : ''; }).join('')}
+    <div class="card">${type === 'csv' ? '<p class="muted small" style="margin:0 0 8px">Read from CSV files. They are not in your figures yet: the next step is giving each one an account name. <b>✓</b> checked against the running balance · <b>○</b> read, not checked (no balance in the file) · <b>⚠</b> a problem.</p>' : ''}<ul class="list">${list.map(s => `<li><div class="who"><b>${s.period.start === s.period.end ? nice(s.period.end) : esc(nice(s.period.start)) + ' – ' + esc(nice(s.period.end))}</b><span>${esc(s.name)}${s.csv ? ' · ' + ({ card: 'card', current: 'current account' }[s.csv.accountType] || 'account type unclear') : ''}${s.count ? ' · ' + s.count + ' transactions' : ''}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}</div><span class="${s.csv ? ({ '✓': 'in', '○': 'muted' }[s.csv.mark] || 'out') : s.ok ? 'in' : 'out'}"${s.csv ? ' style="font-size:18px"' : ''}${s.csv ? ` title="${esc(MARK_TEXT[s.csv.mark] || '')}"` : ''}>${s.csv ? s.csv.mark : s.ok ? '✓' : '⚠'}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`).join('')}</ul></div>` : ''; }).join('')}
     ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div>${s.id ? `<button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${S.txns.length && !S.demo ? `<div class="card notice good small"><b>Saved on this phone, encrypted${S.meta && S.meta.mode === 'pin' ? ' and locked with your passcode' : ''}.</b> The statement PDFs themselves are never saved.</div>` : ''}`;
 }

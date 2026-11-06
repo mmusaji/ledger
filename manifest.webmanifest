@@ -30,10 +30,12 @@
     "params": {
       "files": [
         {
-          "name": "pdfs",
+          "name": "files",
           "accept": [
             "application/pdf",
-            ".pdf"
+            ".pdf",
+            "text/csv",
+            ".csv"
           ]
         }
       ]

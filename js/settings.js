@@ -55,12 +55,12 @@ export function renderSettings() {
       <div class="row" style="flex-wrap:wrap">${S.meta.mode === 'pin'
         ? '<button class="btn ghost" data-act="lock">Lock now</button><button class="btn ghost" data-act="change-pin">Change passcode</button><button class="btn danger" data-act="remove-pin">Remove passcode</button>'
         : '<button class="btn" data-act="change-pin">Set a passcode</button>'}</div>
-      <div class="row"><span class="muted">Erase saved statements. Your settings and rules stay, and you add the PDFs again.</span><button class="btn danger" data-act="erase-data">Erase</button></div>`}
+      <div class="row"><span class="muted">Erase saved statements. Your settings and rules stay, and you add the statements again.</span><button class="btn danger" data-act="erase-data">Erase</button></div>`}
     </div>
 
     <h2>Privacy</h2>
     <div class="card stack small">
-      <div>• Statement PDFs are read in this phone's memory, then discarded. The PDFs are never saved or uploaded.</div>
+      <div>• Statement PDFs and CSVs are read in this phone's memory, then discarded. The files themselves are never saved or uploaded.</div>
       <div>• What's read from them is saved on this phone with AES-256 encryption, so the app opens straight away and only new statements are read.</div>
       <div>• No server, no analytics, no AI. After it loads, the app doesn't contact anyone.</div>
       <div>• Also saved on this phone: the settings above, your rules, saved reports, and category corrections (stored as one-way hashes).</div>

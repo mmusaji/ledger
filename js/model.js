@@ -25,7 +25,8 @@ export function rebuild(extraSkipped = []) {
   S.statements = kept.map(e => {
     const r = e.result;
     return { id: e.id, name: e.name, type: r.type, institution: r.institution, period: r.period, ok: r.ok, problems: r.problems || [],
-      count: (r.txns || []).length, opening: r.opening, closing: r.closing, summary: r.summary, holders: r.holders, pots: r.pots, account: r.account };
+      count: (r.txns || []).length, opening: r.opening, closing: r.closing, summary: r.summary, holders: r.holders, pots: r.pots, account: r.account,
+      csv: r.type === 'csv' ? { confidence: r.confidence, mark: r.mark, accountType: r.accountType, accountTypeWhy: r.accountTypeWhy, notes: r.notes || [] } : undefined };
   }).sort((a, b) => a.period.end.localeCompare(b.period.end));
   const txns = [];
   // Monzo statements cover whatever dates you chose, so two can overlap. A line that falls inside a statement that

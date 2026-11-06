@@ -1,49 +1,49 @@
-/* Adding statements: the phone's file chooser and files sent with Share. Each PDF is read in memory, then discarded. */
-import { P, RD } from './deps.js';
+/* Adding statements: the phone's file chooser and files sent with Share. PDFs and CSVs are told apart by what is inside
+ * them, read in memory, then discarded. A file that cannot be read is not kept; the result sheet says why. */
+import { CSVR, P, RD } from './deps.js';
 import { checkNewAccounts } from './accounts.js';
+import { importSheet } from './importview.js';
 import { rebuild } from './model.js';
+import { readOne, summarise } from './pipeline.js';
 import { S } from './state.js';
 import { render, status, statusLine, toast } from './ui.js';
 import { $ } from './util.js';
 import { PARSER_VERSION, ensureKey, saveVault } from './vault.js';
 
-/** Read PDFs chosen with the phone's own file chooser (any folder, or Google Drive, with "Select all").
+const WANTED = f => /\.(pdf|csv|txt)$/i.test(f.name) || /^(application\/pdf|text\/csv|application\/vnd\.ms-excel)$/.test(f.type);
+
+/** Read statements chosen with the phone's own file chooser (any folder, or Google Drive, with "Select all").
  *  Each file is identified by a fingerprint of its contents, so choosing a whole folder again
  *  only reads the statements that are new. Nothing is uploaded anywhere. */
 async function addLocalFiles(list) {
-  const fileList = [...list].filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
-  if (!fileList.length) return toast('No PDFs chosen.');
+  const fileList = [...list].filter(WANTED);
+  if (!fileList.length) return toast('No PDF or CSV statements chosen.');
   if (S.demo && S.meta) return toast('This is the sample-data demo, so your own statements are not touched. Open the app without ?demo to add statements.');
   if (S.loading) return;
   S.loading = true; S.progress = 0; render();
-  let added = 0, known = 0, skippedIgnored = 0; const notes = [];
+  const outcomes = [];
   try {
     await ensureKey();
+    const ctx = { files: S.files, ignored: S.ignored, version: PARSER_VERSION, CSVR, RD, extractPages: bytes => P.extractPages(window.pdfjsLib, bytes) };
     for (let i = 0; i < fileList.length; i++) {
-      const f = fileList[i];
       status(`Reading ${i + 1}/${fileList.length}`); S.progress = (i + 1) / fileList.length;
       const bar = $('#progress div'); if (bar) bar.style.width = (S.progress * 100) + '%';
-      try {
-        let bytes = await f.arrayBuffer();
-        const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-        const id = 'local:' + [...digest.slice(0, 12)].map(b => b.toString(16).padStart(2, '0')).join('');
-        if (S.ignored.includes(id)) { skippedIgnored++; continue; }
-        if (S.files[id] && S.files[id].v === PARSER_VERSION) { known++; continue; }
-        const entry = { name: f.name, md5: '', modified: '', v: PARSER_VERSION, src: 'local' };
-        const pages = await P.extractPages(window.pdfjsLib, bytes);
-        bytes = null; // the PDF itself is dropped as soon as it has been read
-        const r = RD.readStatement(pages, f.name);
-        if (r.period && r.type !== 'unsupported' && r.type !== 'unreadable') entry.result = r;
-        else entry.skipped = (r.problems || [])[0] || 'Not a statement this app reads';
-        S.files[id] = entry; added++;
-        if (added % 5 === 0) await saveVault();
-      } catch (e) { notes.push({ name: f.name, why: 'Could not read: ' + e.message }); }
+      const o = await readOne(fileList[i], ctx); outcomes.push(o);
+      if (o.status === 'added') { S.files[o.id] = o.entry; if (outcomes.filter(x => x.status === 'added').length % 5 === 0) await saveVault(); }
     }
     S.lastSync = new Date().toISOString(); S.demo = false;
-    await saveVault(); rebuild(notes);
-    toast(`${added} new file${added === 1 ? '' : 's'} read` + (known ? `, ${known} already in the app` : '') + (skippedIgnored ? `, ${skippedIgnored} removed earlier and left out` : ''));
+    S.lastImport = summarise(outcomes);
+    await saveVault(); rebuild();
   } catch (e) { toast(e.message); }
-  finally { S.loading = false; statusLine(); render(); await checkNewAccounts(); }
+  finally {
+    S.loading = false; statusLine(); render();
+    if (S.lastImport && outcomes.length) {
+      // the result is shown first; the "household or personal?" question for a new account waits until it is closed
+      S.sheetLocked = false; $('#sheet-body').innerHTML = importSheet(S.lastImport);
+      await new Promise(res => { const d = $('#sheet'); d.addEventListener('close', res, { once: true }); d.showModal(); });
+    }
+    await checkNewAccounts();
+  }
 }
 
 /** Files sent with the phone's Share menu (for example from the Google Drive app) are parked briefly by the
@@ -56,7 +56,7 @@ export async function checkInbox() {
   for (const k of keys) {
     const r = await c.match(k); if (!r) continue;
     const name = decodeURIComponent(r.headers.get('x-name') || 'shared.pdf');
-    files.push(new File([await r.blob()], name, { type: 'application/pdf' }));
+    files.push(new File([await r.blob()], name, { type: r.headers.get('x-type') || '' }));
   }
   try { await addLocalFiles(files); }
   finally { for (const k of await c.keys()) await c.delete(k); }
@@ -64,7 +64,7 @@ export async function checkInbox() {
 
 export function chooseLocalFiles() {
   const inp = document.createElement('input');
-  inp.type = 'file'; inp.multiple = true; inp.accept = 'application/pdf,.pdf';
+  inp.type = 'file'; inp.multiple = true; inp.accept = 'application/pdf,.pdf,text/csv,.csv';
   inp.onchange = () => addLocalFiles(inp.files);
   inp.click();
 }

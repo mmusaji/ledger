@@ -22,10 +22,10 @@ Rule for everything below: existing readers and the way the app works today are 
 | Mark | Meaning | Words shown when tapped |
 |---|---|---|
 | ✓ | checked | "The totals add up against the statement" (PDF), or "The running balance adds up on every row" (CSV with a Balance column). |
-| ◐ | not checked | "This CSV has no balance column, so the totals cannot be checked. The amounts are shown exactly as your bank's file gives them." |
+| ○ | not checked | "This CSV has no balance column, so the totals cannot be checked. The amounts are shown exactly as your bank's file gives them." |
 | ⚠ | problem | The existing warning text. |
 
-A bank's CSV carries no printed totals, so ◐ is normal for Monzo and card exports. It is information, not an error.
+A bank's CSV carries no printed totals, so ○ is normal for Monzo and card exports. It is information, not an error.
 
 ## 3. Naming accounts from CSVs (and unknown-bank PDFs)
 
@@ -72,9 +72,18 @@ The saved data lives in an IndexedDB database called `ledger`, browser storage a
 
 ## 9. Stages (one commit each)
 
-1. File routing + staged import pipeline + result sheet + Last import card (existing PDF readers and the CSV reader).
+1. File routing + staged import pipeline + result sheet + Last import card (existing PDF readers and the CSV reader). **Built.** See the notes below.
 2. Account list + naming flow + layout memory.
 3. Overlap and duplicate checks, source precedence, continuity, Undo.
 4. Collapsed Statements screen.
 5. Generic PDF reader as the verified-only fallback, with its off switch.
 6. Pipeline test harness (grows with each stage).
+
+### Stage 1 notes (built)
+- `js/pipeline.js` (pure logic, tested in Node by `tests/pipeline.test.js`): files are routed by their bytes, so a CSV renamed `.pdf` is still a CSV. One outcome per file: added, known, ignored or failed. A failed file is never stored.
+- `js/importview.js`: the result sheet shown after each import and the **Last import** card on the Statements screen (kept in the encrypted vault, dismissible). It lists names and reasons only, never transactions.
+- CSVs that read are stored as statements of type `csv` and listed under **CSV statements, waiting for account setup**. They are **held out of every figure** until Stage 2 (account names) and Stage 3 (overlap checks) exist, so nothing can be double counted in the meantime.
+- Marks on CSV rows: ✓ checked against the running balance, ○ read but nothing to check it against, ⚠ read with a problem. (○ replaced the half-circle in the design because that glyph renders as a sliver in some fonts.)
+- PDFs: the existing readers are untouched. What changed is that a PDF they cannot read is no longer saved as a "Not used" row; it appears in the result sheet with the hint to try the CSV. A money statement that found no transactions and does not add up is treated as not read. A PDF read with a total that does not match keeps its existing ⚠.
+- The "Not used" list on the Statements screen still shows files saved by earlier versions.
+- Share-target: the manifest field is now `files` (accepts PDF and CSV); the service worker still accepts the old `pdfs` field. Installed copies of the app need to be reinstalled to pick up the new manifest.

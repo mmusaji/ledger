@@ -27,12 +27,13 @@ export function bindEvents() {
         case 'go-settings': return go('settings');
         case 'demo': return loadDemo();
         case 'add-local': return chooseLocalFiles();
+        case 'dismiss-import': S.lastImport = null; await saveVault(); return renderData();
         case 'ignore': {
           if (!confirm('Stop using this file in the app? (The PDF itself is untouched wherever you keep it.)')) return;
           S.ignored = [...new Set(S.ignored.concat(v))]; store.set('ignored', S.ignored);
           delete S.files[v]; await saveVault(); rebuild(); return render();
         }
-        case 'unignore': S.ignored = []; store.set('ignored', S.ignored); renderData(); return toast('Add the PDFs again to read them.');
+        case 'unignore': S.ignored = []; store.set('ignored', S.ignored); renderData(); return toast('Add the statements again to read them.');
         case 'unlock': {
           const pin = $('#pin').value; if (!pin) return;
           a.disabled = true;
