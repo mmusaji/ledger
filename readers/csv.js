@@ -183,7 +183,7 @@ const CARD_WORDS = /payment received|payment[ -]*thank|thank you|annual fee|late
       st.push({ j, cells, fill: ne.length / data.length, dateFrac: dates / data.length, moneyFrac: ne.length ? moneys / ne.length : 0, len: ne.length ? ne.reduce((a, c) => a + c.length, 0) / ne.length : 0 });
     }
     const dateCol = st.find(c => c.dateFrac >= 0.9); if (!dateCol) return [];
-    const mcols = st.filter(c => c.j !== dateCol.j && c.moneyFrac >= 0.9 && c.fill >= 0.05);
+    const mcols = st.filter(c => c.j !== dateCol.j && c.moneyFrac >= 0.9 && c.fill > 0);
     const text = st.filter(c => c.j !== dateCol.j && c.moneyFrac < 0.9 && c.dateFrac < 0.5 && c.fill >= 0.5).sort((a, b) => b.len - a.len)[0];
     const both = (a, b) => a.cells.filter((c, i) => c && b.cells[i]).length / data.length;
     const mk = assign => {
