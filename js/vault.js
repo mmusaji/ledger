@@ -35,7 +35,7 @@ export async function keyFromPin(pin, salt) {
 export async function saveVault() {
   if (!S.key || S.demo) return;
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, S.key, enc.encode(JSON.stringify({ files: S.files, lastSync: S.lastSync })));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, S.key, enc.encode(JSON.stringify({ files: S.files, lastSync: S.lastSync, lastImport: S.lastImport && Object.assign({}, S.lastImport, { failed: [], failedCount: S.lastImport.failed.length || S.lastImport.failedCount || 0 }), book: S.book })));
   await idb.put('vault', { iv, ct, saved: Date.now() });
 }
 
@@ -44,7 +44,7 @@ export async function openVault(key) {
   if (v) {
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: v.iv }, key, v.ct); // fails if the passcode is wrong
     const j = JSON.parse(dec.decode(pt));
-    S.files = j.files || {}; S.lastSync = j.lastSync || null;
+    S.files = j.files || {}; S.lastSync = j.lastSync || null; S.lastImport = j.lastImport || null; S.book = { accounts: [], assign: {}, layouts: {}, ...(j.book || {}) };
   }
   S.key = key; S.locked = false; S.demo = false;
   rebuild();
@@ -76,7 +76,7 @@ export async function ensureKey() { if (!S.key) await setPin(await askNewPin(fal
 
 export function lock() {
   if (!S.meta || S.meta.mode !== 'pin') return;
-  S.key = null; S.files = {}; S.txns = []; S.statements = []; S.skipped = []; S.payslips = []; S.isa = []; S.pension = []; S.locked = true;
+  S.key = null; S.files = {}; S.lastImport = null; S.book = { accounts: [], assign: {}, layouts: {} }; S.overlap = {}; S.continuity = []; S.txns = []; S.statements = []; S.skipped = []; S.payslips = []; S.isa = []; S.pension = []; S.locked = true;
   if ($('#sheet').open) { S.sheetLocked = false; $('#sheet').close(); }
   statusLine(); go('home');
 }

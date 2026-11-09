@@ -1,6 +1,22 @@
 # Changes
 
-## v4.0 (branch `v4`, in progress)
+## v4.1 (from branch `smart-parser`)
+
+**CSV statements.** Bank and card CSV exports can be added alongside PDFs; the app tells them apart by what is inside the file. A CSV with a balance column is checked line by line (✓); one without is read but not checked (○). A CSV does not say which account it is from, so the first time a layout is seen the app asks once ("Which account is this?": a new card or current account, or the same account as your PDFs) and remembers it.
+
+**PDFs from other banks.** A PDF that no bank reader knows is read by a generic reader, and kept only when the statement's own running balance or printed totals prove every line. Tested on Barclays, HSBC, first direct, NatWest and Revolut statements. Can be switched off in Settings.
+
+**Imports.** Everything in one go is saved together, with a result sheet and an **Undo**. A file that cannot be read is no longer saved: the result says why (a scan, not a statement, figures that don't add up) and what to try instead, so adding it again after a fix just works. Only a count of such files is kept, never their names.
+
+**Overlaps.** Files covering the same days for one account are counted once: a PDF that adds up wins for its dates, a checked file beats an unchecked one, otherwise the same date and amount count once (two identical coffees on one day stay two). Rows that differ are kept and reported. Gaps and balances that don't carry over between CSVs are listed.
+
+**Statements that don't add up.** Tap one to see the difference, what it does to your figures, and keep it or leave it out. Until you decide, it is counted (as before) and the Dashboard and Reports show a notice.
+
+**Statements screen.** Lists are grouped by account and open or close (for example `Amex (14)`), remembering what you opened. Tap any mark for what it means.
+
+**Compatibility.** Saved data from v4.0 opens unchanged (the reader version is still 3). Reinstall the app from the home screen if you want Share → Ledger to offer CSV files. Card repayments from the bank to a CSV-only card are recognised from the words you give for how the bank shows them.
+
+## v4.0
 
 **Accounts.** Every current account is now either **Household** or **Personal**.
 - The first account added is the household's. Later ones are asked about when first seen.

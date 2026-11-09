@@ -4,6 +4,7 @@ import { CATEGORIES } from './deps.js';
 import { scopeTxns } from './model.js';
 import { cycleLabel } from './period.js';
 import { S } from './state.js';
+import { figuresNotice } from './notices.js';
 import { emptyState } from './ui.js';
 import { $, esc, gbp, niceShort, sum } from './util.js';
 
@@ -49,7 +50,7 @@ export function renderReports() {
   const activeCount = (f.cats.length ? 1 : 0) + (f.kinds.length ? 1 : 0) + (f.min || f.max ? 1 : 0);
 
   el.innerHTML = `
-    ${scopeBar()}
+    ${scopeBar()}${figuresNotice()}
     ${S.presets.length ? `<div class="chips">${S.presets.map((p, i) => `<button class="chip" data-act="preset" data-v="${i}">${esc(p.name)}</button>`).join('')}</div>` : ''}
     <div class="card stack">
       <label class="field">Search (separate several with commas)
