@@ -1,9 +1,9 @@
-/* EXPERIMENT: a generic, bank-agnostic statement table reader.
+/* The generic PDF statement reader: bank-agnostic, used as the last resort for PDFs no other reader knows.
  * It knows nothing about any bank. It finds the transaction table from its header words and column
  * positions, reads the rows, then PROVES the result with arithmetic (running balances, printed totals).
  * If nothing can be proved it says so (confidence 'unverified'); if the sums disagree it fails.
- * Used by the app only as a last resort for PDFs no bank-specific reader knows, and only when it can PROVE the result
- * (js/pipeline.js). Test it with tools/smart-eval.js.
+ * The app (js/pipeline.js) accepts only a 'verified' result; anything else is refused and not kept.
+ * Test it with tools/smart-eval.js. Switched off in Settings → PDFs from other banks.
  * Input: pages = [[{str,x,y,w}]] from parser.extractPages (w = text width, optional).
  */
 (function (root) {

@@ -76,7 +76,7 @@ export async function ensureKey() { if (!S.key) await setPin(await askNewPin(fal
 
 export function lock() {
   if (!S.meta || S.meta.mode !== 'pin') return;
-  S.key = null; S.files = {}; S.lastImport = null; S.book = { accounts: [], assign: {}, layouts: {} }; S.txns = []; S.statements = []; S.skipped = []; S.payslips = []; S.isa = []; S.pension = []; S.locked = true;
+  S.key = null; S.files = {}; S.lastImport = null; S.book = { accounts: [], assign: {}, layouts: {} }; S.overlap = {}; S.continuity = []; S.txns = []; S.statements = []; S.skipped = []; S.payslips = []; S.isa = []; S.pension = []; S.locked = true;
   if ($('#sheet').open) { S.sheetLocked = false; $('#sheet').close(); }
   statusLine(); go('home');
 }

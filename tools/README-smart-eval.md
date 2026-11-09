@@ -1,4 +1,4 @@
-# Smart-parser experiment (branch `smart-parser`)
+# Generic PDF reader: test harness
 
 Question: can one generic reader, with no bank-specific code, read most UK statements — and can it *prove* it got them right?
 
@@ -9,10 +9,10 @@ are treated as hypotheses and the one that satisfies the statement's own arithme
 | result | meaning |
 |---|---|
 | **verified** | the figures add up against something printed on the statement |
-| **unverified** | rows were read but the statement has nothing to prove them against (would be shown with a warning) |
-| **failed** | the sums disagree, or no table was found (nothing would be added) |
+| **unverified** | rows were read but the statement has nothing to prove them against (the app refuses these) |
+| **failed** | the sums disagree, or no table was found (the app refuses these) |
 
-It is **not wired into the app**. It only runs from this harness.
+The app uses it as the last resort for PDFs no bank reader knows, and keeps only **verified** results (`js/pipeline.js`). It can be switched off in Settings.
 
 ## Run it
 

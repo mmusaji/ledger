@@ -1,6 +1,6 @@
-# CSV reader tests (branch `smart-parser`)
+# CSV reader tests
 
-Reader under test: `readers/csv.js` (not wired into the app). Harness: `tools/csv-eval.js`.
+Reader under test: `readers/csv.js` (used by the app's import, `js/pipeline.js`). Harness: `tools/csv-eval.js`.
 
 ```
 node tools/csv-eval.js --regen          # generate ~200 synthetic CSVs with known answers, run them, print only what is not a plain PASS

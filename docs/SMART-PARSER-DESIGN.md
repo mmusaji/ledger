@@ -1,4 +1,6 @@
-# Smart parser: design (draft, experiment branch `smart-parser`)
+# Smart parser: design
+
+Status: **built and released in v4.1.** `readers/smart.js` is the last-resort PDF reader (only verified results are kept) and `readers/csv.js` reads CSV exports; the screens followed `IMPORT-FLOW-DESIGN.md`. Kept as the design record. Not built from this document: the Web Worker, page and time budgets and the separate reader version number (section 4), and the larger mutation and performance suites (section 6, items 3 and 5).
 
 Status: **design only. Nothing here is wired into the app.** The app's current behaviour, readers, storage and screens do not change
 as part of this work. Everything below applies to this one feature, and only if we decide to build it.
@@ -83,7 +85,7 @@ Payslips have a different shape (labelled pay and deduction lines, not a dated t
 - Never trust a quoted or formula-like cell (`=`, `+`, `@`): treat everything as text.
 - Needs real exports to test. Collecting a few from each major bank comes first; fixtures are then generated from the same shapes.
 
-**Status:** `readers/csv.js` and a ~200-file synthetic test suite exist on the branch (see `tests/csv/README.md`). Real CSV exports from the user are still needed.
+**Status:** built. `readers/csv.js` with a ~220-file synthetic test suite (`tests/csv/README.md`), also run over four real export files (current account and card).
 
 ## 6. Testing plan (the gate before any wiring)
 
@@ -97,10 +99,10 @@ Payslips have a different shape (labelled pay and deduction lines, not a dated t
 
 ## 6b. Rollout (each step is separate and reversible)
 
-1. Experiment branch only (now): harness and tests, no app changes.
-2. Hardening: items 2, 3, 5 above; more real samples.
-3. Prototype behind the off-by-default switch, on a separate branch, preview-and-confirm only.
-4. Owner decides whether to merge. Nothing happens to `main` before that.
+1. Experiment branch only: harness and tests, no app changes. **Done.**
+2. Hardening: more real samples. **Done for the samples available**; items 3 and 5 above are still open.
+3. Wired in on the branch as a verified-only fallback with an off switch (default on, decided with the owner). **Done.**
+4. Owner decides whether to merge: merged for v4.1.
 
 ## 7. Open questions
 

@@ -1,13 +1,13 @@
-# Import flow: PDFs and CSVs, accounts, duplicates (design, branch `smart-parser`)
+# Import flow: PDFs and CSVs, accounts, duplicates (design)
 
-Status: agreed direction, not built. Decisions made with the user on 2026-11-06 are marked **Decided**.
+Status: **built** (stages 1 to 5, released as v4.1). Kept as the design record; the notes at the end say what was built and how it differs. Not built from this design: several cards in one CSV (section 3.3), the account hint from card digits or card member (3.1), the sanity checks on dates and currency and the card-versus-current-account warning (section 4). These are in `TODO.md`. Decisions made with the user on 2026-11-06 are marked **Decided**.
 Rule for everything below: existing readers and the way the app works today are not changed unless a stage says so; each stage is one commit and can be rolled back.
 
 ## 1. The flow
 
 1. **Add statements.** One button. The chooser accepts `.pdf` and `.csv`. Phones cannot pick a folder, only "select all" inside one (as today). The Share-sheet route (manifest + service worker) also accepts CSV.
 2. **Choose files.** Any mix of PDFs and CSVs.
-3. **Route by the file's own bytes** (`%PDF`, or text with delimiters); the extension is only a hint. A PDF renamed `.csv` is refused.
+3. **Route by the file's own bytes** (`%PDF`, or text with delimiters); the name is not used. A PDF renamed `.csv` is read as a PDF.
 4. **Read (staged, nothing stored yet).**
    - PDF: the existing readers first, unchanged. Only if every existing reader says "not mine" does the generic PDF reader (`readers/smart.js`) try, and only a **verified** result is accepted (see section 5).
    - CSV: `readers/csv.js`.
@@ -64,25 +64,25 @@ One collapsed row per account with the count and coverage, e.g. `Amex (14) ✓ N
 
 - A Node harness for the whole pipeline (stage, validate, commit, undo) using the synthetic fixtures and real samples kept outside the repo: duplicates, PDF + CSV for the same account, a 13-month CSV over loaded months, a failing PDF, a scan, naming and layout memory, Undo.
 - Existing suites must stay green; PDF results for existing readers must not change.
-- **Decided**: this stays on the `smart-parser` branch for now; testing live comes later.
+- **Decided** at the time: stays on the `smart-parser` branch until tested. Merged to `main` for v4.1 after review.
 
-## 8. Before it ever goes live (not needed for local testing)
+## 8. Going live
 
-The saved data lives in an IndexedDB database called `ledger`, browser storage and a `ledger-inbox` cache. Another build on the same site (`mmusaji.github.io`) would share them and could corrupt live data. Before any live test: namespace those names, give the test build its own app name, icon and cache names, and decide between a migration and re-adding statements.
+The saved data lives in an IndexedDB database called `ledger`, browser storage and a `ledger-inbox` cache, shared by everything on `mmusaji.github.io`. **Decided** (2026-11-09): not needed for v4.1, because the new build replaces the old one rather than running beside it, and saved data from v4.0 opens unchanged. Only needed if a second build is ever hosted beside it (in `TODO.md`).
 
 ## 9. Stages (one commit each)
 
 1. File routing + staged import pipeline + result sheet + Last import card (existing PDF readers and the CSV reader). **Built.** See the notes below.
 2. Account list + naming flow + layout memory. **Built.**
 3. Overlap and duplicate checks, source precedence, continuity, Undo. **Built.**
-4. Collapsed Statements screen.
-5. Generic PDF reader as the verified-only fallback, with its off switch.
-6. Pipeline test harness (grows with each stage).
+4. Collapsed Statements screen. **Built.**
+5. Generic PDF reader as the verified-only fallback, with its off switch. **Built.**
+6. Pipeline test harness (grows with each stage). **Built:** `tests/pipeline.test.js`, `tests/book.test.js`.
 
 ### Stage 1 notes (built)
 - `js/pipeline.js` (pure logic, tested in Node by `tests/pipeline.test.js`): files are routed by their bytes, so a CSV renamed `.pdf` is still a CSV. One outcome per file: added, known, ignored or failed. A failed file is never stored.
 - `js/importview.js`: the result sheet shown after each import and the **Last import** card on the Statements screen (kept in the encrypted vault, dismissible). It lists names and reasons only, never transactions.
-- CSVs that read are stored as statements of type `csv` and listed under **CSV statements, waiting for account setup**. They are **held out of every figure** until Stage 2 (account names) and Stage 3 (overlap checks) exist, so nothing can be double counted in the meantime.
+- CSVs that read are stored as statements of type `csv`. Until they are given an account (Stage 2) they wait under **CSV files waiting for an account name** and are **held out of every figure**.
 - Marks on CSV rows: ✓ checked against the running balance, ○ read but nothing to check it against, ⚠ read with a problem. (○ replaced the half-circle in the design because that glyph renders as a sliver in some fonts.)
 - PDFs: the existing readers are untouched. What changed is that a PDF they cannot read is no longer saved as a "Not used" row; it appears in the result sheet with the hint to try the CSV. A money statement that found no transactions and does not add up is treated as not read. A PDF read with a total that does not match keeps its existing ⚠.
 - The "Not used" list on the Statements screen still shows files saved by earlier versions.

@@ -17,8 +17,8 @@ export const fileIdOf = async bytes => {
   return 'local:' + [...d.slice(0, 12)].map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-/** What the bytes are: 'pdf' | 'csv' | 'unknown'. The extension is only a tie-break for tiny files; a CSV renamed
- *  .pdf (or the other way round) is still routed by what is inside it. */
+/** What the bytes are: 'pdf' | 'csv' | 'unknown', from what is inside them and never from the name, so a CSV renamed
+ *  .pdf (or the other way round) is still routed correctly. */
 export const kindOf = (bytes, CSVR) => CSVR.sniff(new Uint8Array(bytes));
 
 /** How much a CSV result proves, as one mark. ✓ checked against its own balances, ○ read but nothing to check it
@@ -27,7 +27,7 @@ export function csvMark(r) {
   if (r.problems && r.problems.length) return '⚠';
   return r.confidence === 'verified' ? '✓' : '○';
 }
-export const MARK_TEXT = { '✓': 'checked: every row adds up against the running balance', '○': 'read, but not checked: this file has no balance to check it against', '⚠': 'read, with a problem' };
+export const MARK_TEXT = { '✓': "checked: every row adds up against the file's own balance or totals", '○': 'read, but not checked: this file has no balance to check it against', '⚠': 'read, with a problem' };
 
 /** A CSV result in the shape the saved statements use. Held as "waiting for account setup" until it has been given an
  *  account (Stage 2), so it never reaches the figures on its own. */
@@ -95,7 +95,7 @@ export function summarise(outcomes, at) {
   const by = s => outcomes.filter(o => o.status === s);
   return {
     at: at || new Date().toISOString(),
-    added: by('added').map(o => ({ name: o.name, kind: o.kind, mark: o.mark, rows: o.rows, period: o.period, label: o.label, acct: o.attached || null, remembered: !!o.remembered, overlap: o.overlap ? { dup: o.overlap.dup, differs: o.overlap.differs, with: o.overlap.overlapWith } : null })),
+    added: by('added').map(o => ({ name: o.name, kind: o.kind, mark: o.mark, rows: o.rows, period: o.period, label: o.label, acct: o.attached || null, remembered: !!o.remembered, waiting: !o.attached && !!o.entry && o.entry.result.type === 'csv', overlap: o.overlap ? { dup: o.overlap.dup, differs: o.overlap.differs, with: o.overlap.overlapWith } : null })),
     known: by('known').length, ignored: by('ignored').length,
     failed: by('failed').map(o => ({ name: o.name, why: o.why, hint: o.hint }))
   };

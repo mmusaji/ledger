@@ -37,7 +37,7 @@ export function bindEvents() {
         case 'ignore': {
           if (!confirm('Stop using this file in the app? (The PDF itself is untouched wherever you keep it.)')) return;
           S.ignored = [...new Set(S.ignored.concat(v))]; store.set('ignored', S.ignored);
-          delete S.files[v]; await saveVault(); rebuild(); return render();
+          delete S.files[v]; if (S.book && S.book.assign) delete S.book.assign[v]; await saveVault(); rebuild(); return render();
         }
         case 'unignore': S.ignored = []; store.set('ignored', S.ignored); renderData(); return toast('Add the statements again to read them.');
         case 'unlock': {
@@ -50,8 +50,10 @@ export function bindEvents() {
         case 'change-pin': { const pin = await askNewPin(S.meta && S.meta.mode === 'pin'); if (pin === undefined) return; if (pin === null && S.meta && S.meta.mode !== 'pin') return; await setPin(pin); renderSettings(); return toast(pin ? 'Passcode set' : 'Saved without a passcode'); }
         case 'remove-pin': if (!confirm('Remove the passcode? Anyone who can open this app on your phone will see your saved statements.')) return; await setPin(null); renderSettings(); return toast('Passcode removed');
         case 'erase-data':
-          if (!confirm('Erase the saved statements from this phone? Your settings and rules are kept. You add the PDFs again to read them.')) return;
-          await idb.clear(); S.files = {}; S.key = null; S.meta = null; S.locked = false; S.lastSync = null; rebuild(); statusLine(); return go('home');
+          if (!confirm('Erase the saved statements from this phone? Your settings, rules and account names are kept. You add the statements again to read them.')) return;
+          // account names and remembered CSV layouts are kept, so re-adding the same files needs no questions; which file
+          // belonged where, and the last import, go with the files
+          await idb.clear(); S.files = {}; S.key = null; S.meta = null; S.locked = false; S.lastSync = null; S.lastImport = null; S.book = Object.assign({}, S.book, { assign: {} }); rebuild(); statusLine(); return go('home');
         case 'acc-role': {
           const [id, role] = v.split('|');
           if (role === 'personal' && !S.accountList.some(a => a.id !== id && a.role === 'household')) return toast('You need at least one household account.');

@@ -66,6 +66,16 @@ global.crypto = global.crypto || require('crypto').webcrypto;
     const p = B.planOverlaps([bad, csv]);
     ok(p.drop.has('bad') && !p.drop.has('csv'), 'a CSV replaces a PDF that did not add up');
   }
+  { // a CSV that proves itself replaces every row of a PDF that did not add up, for the CSV's dates (the review sheet promises this)
+    const bad = src('bad', 'pdf', 0, '2026-01-01', '2026-01-31', [tx('2026-01-02', -500), tx('2026-01-05', -999), tx('2026-02-01', -1)]);
+    const csv = src('csv', 'csv', 2, '2026-01-01', '2026-01-31', [tx('2026-01-02', -500), tx('2026-01-05', -990)]);
+    const p = B.planOverlaps([bad, csv]);
+    ok([...p.drop.get('bad')].join() === '0,1' && !p.drop.has('csv'), 'a checked CSV replaces a PDF that did not add up, misread rows included; rows outside its dates stay');
+  }
+  { // two bank PDFs of one account are not judged here (Monzo has its own rule; judging twice lost the overlap days)
+    const p = B.planOverlaps([src('m1', 'pdf', 3, '2026-01-01', '2026-03-31', [tx('2026-03-10', -100)]), src('m2', 'pdf', 3, '2026-03-01', '2026-04-30', [tx('2026-03-10', -100)])]);
+    ok(p.drop.size === 0 && p.report.size === 0, 'PDF against PDF is left to the existing rules');
+  }
   { // different accounts never touch each other
     const t = [tx('2026-01-02', -500)];
     const p = B.planOverlaps([src('a', 'csv', 1, '2026-01-01', '2026-01-31', t, 'A'), src('b', 'csv', 1, '2026-01-01', '2026-01-31', t, 'B')]);
@@ -129,6 +139,16 @@ global.crypto = global.crypto || require('crypto').webcrypto;
   const pot = S.txns.find(t => /Savings/.test(t.desc)); ok(pot && pot.pot === true && pot.group === 'transfer', 'a pot transfer is recognised from the CSV Type column');
   ok(M.scopeTxns().length === 3, 'it is part of the household figures');
   ok(M.balanceSeries(M.scopeTxns().filter(M.isCurrent)).length === 0, 'with no balance column there is no balance line and nothing breaks');
+
+  // two Monzo PDFs that overlap: the shared days are counted once, not lost (regression)
+  {
+    const mz = (name, start, end, rows) => ({ name, v: 3, result: { type: 'monzo', ok: true, institution: 'Monzo', period: { start, end }, account: { id: 'monzo-9', bank: 'Monzo', last4: '9' }, holders: [], opening: 0, closing: 0,
+      txns: rows.map(([date, amount]) => ({ date, desc: 'SHOP ' + date, amount, balance: null, type: 'monzo', accId: 'monzo-9', account: 'Monzo', kind: 'Card payment' })) } });
+    const keep = S.files; S.files = { 'pdf:m1': mz('m1.pdf', '2026-01-01', '2026-03-31', [['2026-02-10', -100], ['2026-03-10', -200]]), 'pdf:m2': mz('m2.pdf', '2026-03-01', '2026-04-30', [['2026-03-10', -200], ['2026-04-10', -300]]) };
+    M.rebuild(); const m = S.txns.filter(t => t.accId === 'monzo-9').map(t => t.date).sort().join();
+    ok(m === '2026-02-10,2026-03-10,2026-04-10', 'two overlapping Monzo PDFs: each day counted exactly once (was: the overlap was lost)');
+    S.files = keep;
+  }
 
   // left-out statements
   S.files['pdf:bad'] = { name: 'bad.pdf', v: 3, result: { type: 'amex', ok: false, problems: ['a total is off'], period: { start: '2026-02-01', end: '2026-02-28' }, account: null, txns: [{ date: '2026-02-03', desc: 'SHOP', amount: -1000, type: 'card', account: 'Amex' }], institution: 'Amex' } };

@@ -1,8 +1,8 @@
-/* EXPERIMENT: a generic, bank-agnostic CSV statement reader (sister of readers/smart.js).
+/* The CSV statement reader: generic and bank-agnostic (sister of readers/smart.js).
  * Knows nothing about any bank. Finds the header row from its words, maps columns by NAME (never by position),
  * reads the rows, then PROVES the result with the running balance when there is one.
  *   verified   the running balance adds up across every row that has one
- *   unverified rows were read but the file has no balance to prove them against (shown with a warning)
+ *   unverified rows were read but the file has no balance to prove them against (shown as ○, read but not checked)
  *   failed     the arithmetic disagrees, or the file is not a UK-style statement, or rows could not be read safely
  * Used by the app's import pipeline (js/pipeline.js); test it with tools/csv-eval.js. Everything is treated as text: nothing in a cell is ever evaluated.
  * Input: a string, or bytes (Uint8Array/Buffer). Money is whole pence; spend is negative.

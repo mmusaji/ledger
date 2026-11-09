@@ -13,17 +13,19 @@ import { render, status, statusLine, toast } from './ui.js';
 import { $, store } from './util.js';
 import { PARSER_VERSION, ensureKey, saveVault } from './vault.js';
 
-const WANTED = f => /\.(pdf|csv|txt)$/i.test(f.name) || /^(application\/pdf|text\/csv|application\/vnd\.ms-excel)$/.test(f.type);
+const WANTED = f => /\.(pdf|csv|txt)$/i.test(f.name) || /^(application\/pdf|text\/csv|text\/comma-separated-values|application\/vnd\.ms-excel)$/.test(f.type);
 
 /** Read statements chosen with the phone's own file chooser (any folder, or Google Drive, with "Select all").
  *  Each file is identified by a fingerprint of its contents, so choosing a whole folder again
  *  only reads the statements that are new. Nothing is uploaded anywhere. */
+let importing = false; // one import at a time, including while its questions are open (S.loading is off then)
+
 async function addLocalFiles(list) {
   const fileList = [...list].filter(WANTED);
   if (!fileList.length) return toast('No PDF or CSV statements chosen.');
   if (S.demo && S.meta) return toast('This is the sample-data demo, so your own statements are not touched. Open the app without ?demo to add statements.');
-  if (S.loading) return;
-  S.loading = true; S.progress = 0; render();
+  if (S.loading || importing) return toast('An import is already open. Finish it first.');
+  importing = true; S.loading = true; S.progress = 0; render();
   const outcomes = [], staged = {}; let cancelled = false, sum = null;
   try {
     await ensureKey();
@@ -54,18 +56,21 @@ async function addLocalFiles(list) {
     }
     if (cancelled) { toast('Import cancelled. Nothing was saved.'); outcomes.length = 0; return; }
     // commit everything at once
+    const before = new Set(Object.keys(S.files));
     Object.assign(S.files, staged); S.book = work;
     if (Object.keys(roles).length) { Object.entries(roles).forEach(([id, role]) => { S.accounts[id] = { role }; }); if (!S.demo) store.set('accounts', S.accounts); }
     S.lastSync = new Date().toISOString(); S.demo = false;
     rebuild();
     outcomes.forEach(o => { if (o.status === 'added' && S.overlap && S.overlap[o.id]) o.overlap = S.overlap[o.id]; });
-    sum = Object.assign(summarise(outcomes), { undo: Object.keys(staged).length ? { files: Object.keys(staged), accounts: created, layouts: newLayouts } : null });
+    // Undo takes back only files that were new; one read again by a newer reader version would be lost entirely
+    const fresh = Object.keys(staged).filter(id => !before.has(id));
+    sum = Object.assign(summarise(outcomes), { undo: fresh.length || created.length ? { files: fresh, accounts: created, layouts: newLayouts } : null });
     // a batch that changed nothing (everything already known) does not replace the last real import, so its Undo stays
     if (sum.added.length || sum.failed.length) S.lastImport = sum;
     await saveVault();
   } catch (e) { toast('Nothing was saved: ' + e.message); outcomes.length = 0; }
   finally {
-    S.loading = false; statusLine(); render();
+    importing = false; S.loading = false; statusLine(); render();
     if (sum && outcomes.length) {
       // the result is shown first; the "household or personal?" question for a new PDF account waits until it is closed
       S.sheetLocked = false; $('#sheet-body').innerHTML = importSheet(sum);
@@ -89,7 +94,7 @@ export async function undoLastImport() {
 /** Files sent with the phone's Share menu (for example from the Google Drive app) are parked briefly by the
  *  service worker, read here, then deleted straight away. */
 export async function checkInbox() {
-  if (S.locked || S.loading || !('caches' in window)) return;
+  if (S.locked || S.loading || importing || !('caches' in window)) return;
   let c; try { c = await caches.open('ledger-inbox'); } catch { return; }
   const keys = await c.keys(); if (!keys.length) return;
   const files = [];

@@ -35,6 +35,7 @@
             "application/pdf",
             ".pdf",
             "text/csv",
+            "text/comma-separated-values",
             ".csv"
           ]
         }

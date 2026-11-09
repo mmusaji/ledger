@@ -6,6 +6,7 @@ import { accIdOf, activeScope, isBankStmt, scopeStatements } from './model.js';
 import { S } from './state.js';
 import { $, MON, addDays, daysBetween, esc, gbp, isoOf, monthLabel, nice, niceShort, pad, store, today } from './util.js';
 
+const MONEY = ['santander', 'amex', 'tesco', 'monzo'];
 const TYPES = [['santander', 'Santander', 5], ['amex', 'Amex', 19], ['tesco', 'Tesco CC', 24], ['payslip', 'Payslips', 26]];
 
 /** The statements that belong to the view: household = its accounts, cards, payslips, ISA and pension; a personal
@@ -56,7 +57,7 @@ function grp(key, title, list, inner, meta = '') {
 /** One statement in a list. A CSV, or a statement that does not add up, opens a sheet when tapped. */
 function rowHtml(s) {
   const mark = s.csv ? s.csv.mark : s.ok ? '✓' : '⚠';
-  const tap = s.csv || !s.ok || s.held;
+  const tap = s.csv || (MONEY.includes(s.type) && (!s.ok || s.held)); // only these open a sheet (js/stmtsheet.js)
   const state = s.held ? ' · left out of your figures' : s.acked ? ' · kept, checked by you' : '';
   return `<li class="${tap ? 'tap' : ''}" ${tap ? `data-act="stmt-open" data-v="${esc(s.id)}"` : ''}><div class="who"><b>${when(s)}</b><span>${esc(s.name)}${s.csv ? (s.csv.src === 'pdf' ? ' · PDF, other bank' : ' · CSV') : ''}${s.count ? ' · ' + s.count + ' transactions' : ''}${state}</span>${s.problems.length ? `<span class="out">${s.problems.map(esc).join('<br>')}</span>` : ''}${tap && !s.csv ? '<span>Tap to review</span>' : ''}</div><span class="${s.csv ? markCls(mark) : s.ok ? 'in' : 'out'}" data-act="marks-help" style="font-size:18px;cursor:pointer" title="${esc(s.csv ? MARK_TEXT[mark] || '' : s.ok ? 'Checked' : 'Does not add up')}">${mark}</span><button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button></li>`;
 }

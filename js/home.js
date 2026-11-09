@@ -31,7 +31,7 @@ export function renderHome() {
   const low = series.reduce((m, p) => (!m || p.v < m.balance ? { balance: p.v, date: p.date } : m), null);
   const odDays = new Set(series.filter(p => p.v < 0).map(p => p.date)).size;
   const unmatched = all.filter(t => t.repayStatus === 'nocard');
-  const latestOf = type => (type === 'santander' ? scopeStatements() : S.statements).filter(s => s.type === type).map(s => s.period.end).sort().pop();
+  const latestOf = type => (type === 'santander' ? scopeStatements().filter(s => s.type === 'santander' || s.type === 'csv') : S.statements.filter(s => s.type === type)).map(s => s.period.end).sort().pop(); // 'santander' = the household's bank statements, PDF or CSV
   const synced = S.lastSync ? new Date(S.lastSync).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
   // who spent what

@@ -33,8 +33,10 @@ const keyOf = t => t.date + '|' + t.amount;
  *    sources: [{ id, kind: 'pdf'|'csv', gkey, rank, period, txns }]   rank: 3 statement PDF that adds up, 2 CSV proven by its balance,
  *                                                                     1 CSV with nothing to check it against, 0 PDF that did not add up
  *  Rules, per account (gkey):
+ *    - only overlaps that involve a CSV (or a PDF read by the generic reader, which is shaped like one) are judged here.
+ *      Two bank PDFs of one account are left to the rules that already handle them (Monzo: the later statement wins).
  *    - a source that ranks higher wins. A PDF that adds up is the whole statement for its dates, so lower sources lose
- *      everything dated inside it.
+ *      everything dated inside it. A checked source (rank 2 or more) likewise replaces a PDF that did not add up.
  *    - otherwise the same date and amount counted once: each row of the higher source "uses up" one matching row of
  *      the lower one (a multiset, so two identical coffees on one day stay two).
  *    - rows of the lower source that fall inside the higher source's dates but match nothing are KEPT and counted as
@@ -47,13 +49,15 @@ export function planOverlaps(sources) {
     if (list.length < 2) return;
     const order = list.slice().sort((a, b) => (b.rank - a.rank) || a.period.start.localeCompare(b.period.start) || String(a.id).localeCompare(String(b.id)));
     order.forEach((s, i) => {
-      const higher = order.slice(0, i).filter(h => h.period.start <= s.period.end && h.period.end >= s.period.start);
+      const higher = order.slice(0, i).filter(h => h.period.start <= s.period.end && h.period.end >= s.period.start && !(h.kind === 'pdf' && s.kind === 'pdf'));
       if (!higher.length) return;
+      // a higher source that takes every row dated inside it, matched or not
+      const whole = h => (h.kind === 'pdf' && h.rank === 3) || (h.rank >= 2 && s.kind === 'pdf' && s.rank === 0);
       const d = new Set(); let dup = 0, kept = 0, differs = 0;
       const pool = new Map();
-      higher.filter(h => !(h.kind === 'pdf' && h.rank === 3)).forEach(h => h.txns.forEach(t => { if (within(t.date, s.period)) pool.set(keyOf(t), (pool.get(keyOf(t)) || 0) + 1); }));
+      higher.filter(h => !whole(h)).forEach(h => h.txns.forEach(t => { if (within(t.date, s.period)) pool.set(keyOf(t), (pool.get(keyOf(t)) || 0) + 1); }));
       s.txns.forEach((t, ix) => {
-        if (higher.some(h => h.kind === 'pdf' && h.rank === 3 && within(t.date, h.period))) { d.add(ix); dup++; return; }
+        if (higher.some(h => whole(h) && within(t.date, h.period))) { d.add(ix); dup++; return; }
         const inside = higher.some(h => within(t.date, h.period));
         if (!inside) { kept++; return; }
         const k = keyOf(t), c = pool.get(k) || 0;
