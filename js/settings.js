@@ -4,6 +4,7 @@ import { accountName, rebuild, recategorise } from './model.js';
 import { cycleLabel, cycleOf, payDay } from './period.js';
 import { S } from './state.js';
 import { applyTheme, toast } from './ui.js';
+import { APP_VERSION } from './vault.js';
 import { $, esc, niceShort, ordinal, store, today } from './util.js';
 
 export function renderSettings() {
@@ -72,7 +73,7 @@ export function renderSettings() {
       <div>• Also saved on this phone: the settings above, your rules, saved reports, and category corrections (stored as one-way hashes).</div>
       <div class="row"><span></span><button class="btn danger" data-act="forget">Forget everything</button></div>
     </div>
-    <p class="muted small" style="text-align:center">Household Ledger v4.0 · household and personal accounts, cards, payslips, ISA and pension</p>`;
+    <p class="muted small" style="text-align:center">Household Ledger v${APP_VERSION} · household and personal accounts, cards, payslips, ISA and pension</p>`;
   let dir = '';
   $('#r-dir').addEventListener('click', e => { if (e.target.dataset.v === undefined) return; dir = e.target.dataset.v; [...$('#r-dir').children].forEach(b => b.classList.toggle('on', b === e.target)); });
   $('[data-act="add-rule"]').addEventListener('click', () => {

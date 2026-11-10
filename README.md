@@ -108,6 +108,7 @@ node tests/pipeline.test.js        # import routing, outcomes, result sheet
 node tests/book.test.js            # accounts, overlaps, how CSVs reach the figures
 node tests/monzo.test.js           # Monzo PDF reader
 node tests/income.test.js          # payslip, ISA, savings and pension reader
+node tests/version.test.js         # the version number is the same in the app, sw.js and CHANGELOG
 node tools/csv-eval.js --regen     # CSV reader against ~220 generated files with known answers
 node tools/smart-eval.js tests/smart/fixtures --expect tests/smart/fixtures/expected.json   # generic PDF reader
 ```

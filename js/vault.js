@@ -4,6 +4,8 @@ import { S } from './state.js';
 import { go, statusLine, toast } from './ui.js';
 import { $ } from './util.js';
 
+/** The version shown in Settings. Keep it equal to the newest heading in CHANGELOG.md and to the cache name in sw.js (tests/version.test.js checks all three). */
+export const APP_VERSION = '4.2';
 export const PARSER_VERSION = 3; // bump when a reader changes, so old statements are read again
 
 const enc = new TextEncoder(), dec = new TextDecoder();

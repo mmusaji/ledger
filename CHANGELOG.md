@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## v4.2
 - The **Statements** tab is now **Documents**: it holds everything you add (bank and card statements, payslips, ISA and pension statements), money in and out. Screen text that still said "Pick statements" now says "Add statements".
 
 **Other payslips, ISAs, savings and pensions (v4.2).** The app now reads payslips, ISA/savings statements and pension statements from any provider, in `readers/income.js`.
