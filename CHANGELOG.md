@@ -3,6 +3,13 @@
 ## Unreleased
 - The **Statements** tab is now **Documents**: it holds everything you add (bank and card statements, payslips, ISA and pension statements), money in and out. Screen text that still said "Pick statements" now says "Add statements".
 
+**Other payslips, ISAs, savings and pensions (v4.2).** The app now reads payslips, ISA/savings statements and pension statements from any provider, in `readers/income.js`.
+- **Only when proven.** A payslip is kept only if gross − deductions = net to the penny and it has a pay date. A savings or pension statement is kept only if opening + paid in − paid out + growth − charges = closing. Anything else is refused with a reason and nothing is saved (whole-pound statements get £2 for rounding).
+- **Name each account once.** A new ISA, savings or pension account asks "What do you call this account?" with a suggested name (provider and kind, for example "Vanguard · Junior ISA"). The same provider and kind is attached silently next time. Savings shows one section per account, so a Junior ISA, a Moneyfarm ISA and a pension never mix in one line. Undo removes the names a bad import created.
+- **Pay shows only what a payslip has.** No basic pay, ESPP or RSU line means no blank or "£NaN" row.
+- **No double counting.** Payslips and fund statements add no transactions; bank deposits still count as income either way.
+- **Not done (parked):** typing a payslip in by hand and a UK take-home estimate. Built and tested in commit 611d616, then removed as unused.
+
 ## v4.1 (from branch `smart-parser`)
 
 **CSV statements.** Bank and card CSV exports can be added alongside PDFs; the app tells them apart by what is inside the file. A CSV with a balance column is checked line by line (✓); one without is read but not checked (○). A CSV does not say which account it is from, so the first time a layout is seen the app asks once ("Which account is this?": a new card or current account, or the same account as your PDFs) and remembers it.

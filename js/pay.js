@@ -13,28 +13,29 @@ export function renderPay() {
   if (S.payIdx === null || S.payIdx >= ps.length) S.payIdx = ps.length - 1;
   const p = ps[S.payIdx];
   const gross = p.grossBeforePension;
-  const segs = [['Net pay', p.net, 'k1'], ['Tax + NI', p.tax + p.ni + (p.rsuWithholding || 0), 'kr'], ['Pension', p.pensionEmployee, 'k3'], ['ESPP', p.espp, 'k2'], ['Other', p.otherDeductions, 'k4']].filter(s => s[1] > 0);
+  const segs = [['Net pay', p.net, 'k1'], ['Tax + NI', (p.tax || 0) + (p.ni || 0) + (p.rsuWithholding || 0), 'kr'], ['Pension', p.pensionEmployee || 0, 'k3'], ['ESPP', p.espp || 0, 'k2'], ['Student loan', p.studentLoan || 0, 'k4'], ['Other', p.otherDeductions || 0, 'k4']].filter(s => s[1] > 0);
   const segTotal = sum(segs, s => s[1]) || 1;
   const bankHit = scopeTxns().find(t => isCurrent(t) && t.amount === p.net && Math.abs(daysBetween(p.payDate, t.date)) <= 7);
   const ty = p.payDate.slice(5) >= '04-06' ? +p.payDate.slice(0, 4) : +p.payDate.slice(0, 4) - 1;
   const inTy = ps.filter(x => x.payDate >= `${ty}-04-06` && x.payDate <= `${ty + 1}-04-05`);
-  const tyPenYou = sum(inTy, x => x.pensionEmployee), tyPenEr = sum(inTy, x => x.pensionEmployer);
-  const tyTax = sum(inTy, x => x.tax + (x.rsuWithholding || 0)), tyNi = sum(inTy, x => x.ni), tyNet = sum(inTy, x => x.net), tyGross = sum(inTy, x => x.grossBeforePension), tyEspp = sum(inTy, x => x.espp);
+  const tyPenYou = sum(inTy, x => x.pensionEmployee || 0), tyPenEr = sum(inTy, x => x.pensionEmployer || 0);
+  const tyTax = sum(inTy, x => (x.tax || 0) + (x.rsuWithholding || 0)), tyNi = sum(inTy, x => x.ni || 0), tyNet = sum(inTy, x => x.net || 0), tyGross = sum(inTy, x => x.grossBeforePension || 0), tyEspp = sum(inTy, x => x.espp || 0);
   const notional = (p.items || []).filter(x => x.kind === 'notional');
   const last12 = ps.slice(-12);
   el.innerHTML = `
     ${scopeBar()}
     <div class="chips">${ps.map((x, i) => `<button class="chip ${i === S.payIdx ? 'on' : ''}" data-act="payslip" data-v="${i}">${MON[+x.payDate.slice(5, 7) - 1]} ${x.payDate.slice(2, 4)}</button>`).slice(-14).join('')}</div>
-    <div class="muted small">Paid ${nice(p.payDate)}${p.employer ? ' · ' + esc(p.employer) : ''}${p.ok ? '' : ' · <span class="out">⚠ ' + esc(p.problems[0] || 'check') + '</span>'}</div>
+    <div class="muted small">Paid ${nice(p.payDate)}${p.employer ? ' · ' + esc(p.employer) : ''}${p.ok ? '' : ' · <span class="out">⚠ ' + esc((p.problems || [])[0] || 'check') + '</span>'}</div>
     <h2>Where your pay went</h2>
     <div class="card wf">
-      <div class="r"><span>Basic pay</span><span class="num">${gbp(p.basic)}</span></div>
+      ${p.basic != null ? `<div class="r"><span>Basic pay</span><span class="num">${gbp(p.basic)}</span></div>` : ''}
       ${p.car ? `<div class="r"><span>Car allowance</span><span class="num">${gbp(p.car)}</span></div>` : ''}
       ${p.variable ? `<div class="r"><span>Commission / variable</span><span class="num">${gbp(p.variable)}</span></div>` : ''}
       <div class="r"><b>Gross pay</b><b class="num">${gbp(gross)}</b></div>
-      <div class="r"><span>Pension (salary sacrifice)</span><span class="num out">−${gbp(p.pensionEmployee)}</span></div>
-      <div class="r"><span>Income tax${p.rsuWithholding ? ' (incl. RSU tax)' : ''}</span><span class="num out">−${gbp(p.tax + (p.rsuWithholding || 0))}</span></div>
-      <div class="r"><span>National Insurance</span><span class="num out">−${gbp(p.ni)}</span></div>
+      ${p.pensionEmployee ? `<div class="r"><span>${p.source === 'generic' ? 'Pension' : 'Pension (salary sacrifice)'}</span><span class="num out">−${gbp(p.pensionEmployee)}</span></div>` : ''}
+      ${p.tax != null || p.rsuWithholding ? `<div class="r"><span>Income tax${p.rsuWithholding ? ' (incl. RSU tax)' : ''}</span><span class="num out">−${gbp((p.tax || 0) + (p.rsuWithholding || 0))}</span></div>` : ''}
+      ${p.ni != null ? `<div class="r"><span>National Insurance</span><span class="num out">−${gbp(p.ni)}</span></div>` : ''}
+      ${p.studentLoan ? `<div class="r"><span>Student loan</span><span class="num out">−${gbp(p.studentLoan)}</span></div>` : ''}
       ${p.espp ? `<div class="r"><span>ESPP</span><span class="num out">−${gbp(p.espp)}</span></div>` : ''}
       ${p.otherDeductions ? `<div class="r"><span>Other deductions</span><span class="num out">−${gbp(p.otherDeductions)}</span></div>` : ''}
       <div class="r"><b>Net pay</b><b class="num in">${gbp(p.net)}</b></div>
@@ -52,9 +53,9 @@ export function renderPay() {
       <div class="kpi"><div class="label">Net pay</div><div class="value in">${gbp0(tyNet)}</div></div>
       <div class="kpi"><div class="label">Tax + NI</div><div class="value out">${gbp0(tyTax + tyNi)}</div><div class="sub">tax ${gbp0(tyTax)} · NI ${gbp0(tyNi)}</div></div>
       <div class="kpi"><div class="label">Pension</div><div class="value">${gbp0(tyPenYou + tyPenEr)}</div><div class="sub">you ${gbp0(tyPenYou)} + employer ${gbp0(tyPenEr)}</div></div>
-      <div class="kpi"><div class="label">ESPP</div><div class="value">${gbp0(tyEspp)}</div></div>
+      ${tyEspp ? `<div class="kpi"><div class="label">ESPP</div><div class="value">${gbp0(tyEspp)}</div></div>` : ''}
       <div class="kpi"><div class="label">Kept from gross</div><div class="value">${tyGross ? Math.round(tyNet / tyGross * 100) : 0}%</div><div class="sub">net ÷ gross</div></div>
     </div>
-    ${last12.length > 1 ? `<h2>Net pay by month</h2><div class="card chart">${barChart(last12.map(x => ({ label: MON[+x.payDate.slice(5, 7) - 1], a: x.net, b: x.variable })), 'Net pay', 'Variable pay')}<div class="legend"><span><i style="background:var(--bar1)"></i>Net pay</span><span><i style="background:var(--bar2)"></i>Commission / variable (gross)</span></div></div>` : ''}`;
+    ${last12.length > 1 ? `<h2>Net pay by month</h2><div class="card chart">${barChart(last12.map(x => ({ label: MON[+x.payDate.slice(5, 7) - 1], a: x.net, b: x.variable || 0 })), 'Net pay', 'Variable pay')}<div class="legend"><span><i style="background:var(--bar1)"></i>Net pay</span><span><i style="background:var(--bar2)"></i>Commission / variable (gross)</span></div></div>` : ''}`;
   const ch = el.querySelector('.chips'); if (ch) ch.scrollLeft = ch.scrollWidth;
 }

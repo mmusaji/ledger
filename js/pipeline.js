@@ -46,7 +46,27 @@ export function smartResult(g, id) {
     problems: [], notes: g.notes || [], convention: g.convention || '', rows: g.txns.length, sig: null, account: { id: 'csvfile:' + id.slice(6) }, holders: [], mark: '✓' };
 }
 
-/** `ctx`: { files, ignored, version, CSVR, RD, SMART (or null when switched off), extractPages(bytes) }  `file`: { name, arrayBuffer() }  */
+export const FUND_LABEL = { isa: 'ISA', jisa: 'Junior ISA', lisa: 'Lifetime ISA', gia: 'Investment account', sipp: 'SIPP', workplace: 'Workplace pension', savings: 'Savings' };
+/** Which saved account a savings or pension statement belongs to: same kind from the same provider (and the same last four
+ *  digits when the statement prints them). The user names it once; later statements with the same key are attached silently. */
+export const fundKey = r => [r.type, r.kind || '', r.provider || '', r.ref || ''].join('|');
+export const fundSuggest = r => (r.provider ? r.provider + ' · ' : '') + (FUND_LABEL[r.kind] || 'Savings') + (r.ref ? ' …' + r.ref : '');
+
+/** A payslip, ISA/savings or pension statement read by the generic income reader. Accepted only when its own figures add up,
+ *  and a payslip also needs a pay date. Returns { result } to keep, { why } to refuse, or null when it is not one of these. */
+export function incomeOutcome(inc) {
+  const res = inc && inc.result; if (!res) return null;
+  const what = res.type === 'payslip' ? 'payslip' : res.type === 'pension' ? 'pension statement' : 'savings or investment statement';
+  if (res.confidence !== 'verified') return { why: `This looks like a ${what}, but its figures could not be proven to add up, so it was not read.` };
+  if (res.type === 'payslip' && !res.payDate) return { why: 'This looks like a payslip, but no pay date could be found on it, so it was not read.' };
+  if (res.type !== 'payslip' && !res.period) return { why: `This looks like a ${what}, but no statement dates could be found on it, so it was not read.` };
+  const result = Object.assign({}, res, { ok: true, mark: '✓', problems: [] });
+  if (res.type === 'payslip') { result.institution = 'Payslip'; }
+  else { result.fundKey = fundKey(res); result.fundSuggest = fundSuggest(res); result.institution = result.fundSuggest; }
+  return { result, label: (res.type === 'payslip' ? 'Payslip' : FUND_LABEL[res.kind] || 'Savings') + ' · checked' };
+}
+
+/** `ctx`: { files, ignored, version, CSVR, RD, SMART (or null when switched off), INCOME, toLines(pages), extractPages(bytes) }  `file`: { name, arrayBuffer() }  */
 export async function readOne(file, ctx) {
   const name = file.name;
   try {
@@ -61,6 +81,13 @@ export async function readOne(file, ctx) {
       bytes = null; // the PDF itself is dropped as soon as it has been read
       const r = ctx.RD.readStatement(pages, name);
       if (!r.period || r.type === 'unsupported' || r.type === 'unreadable') {
+        // Payslips, ISAs, savings and pensions: read by the income reader, accepted only when their own figures add up
+        if (r.type !== 'unreadable' && ctx.INCOME && ctx.toLines) {
+          let inc = null; try { inc = ctx.INCOME.read(ctx.toLines(pages)); } catch (e) { inc = null; }
+          const o = incomeOutcome(inc);
+          if (o && o.why) return { name, id, kind, status: 'failed', why: o.why, hint: 'Only income documents whose own totals add up are kept. Nothing from this file was saved.' };
+          if (o) { entry.result = o.result; return { name, id, kind, status: 'added', entry, mark: '✓', rows: 0, period: o.result.period, label: o.label }; }
+        }
         // Last resort for a PDF no bank-specific reader knows: the generic reader, accepted only when it can PROVE every row
         // (running balance or printed totals). Anything less is refused, exactly as before.
         if (r.type !== 'unreadable' && ctx.SMART) {

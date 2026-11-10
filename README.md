@@ -14,7 +14,8 @@ A private app for your phone that reads your own statements (PDF or CSV) and tur
 | **Monzo** current account statements (PDF) | Checked against the running balance and the deposit and outgoing totals printed on the statement. Pots are shown only in that account's own view. The CSV export also works (below), but has no balance to check it against, so the PDF is preferred. |
 | **Amex** card statements | Split by cardholder. |
 | **Tesco Bank / Clubcard** credit card statements | |
-| **Payslips** | ePay layout only. |
+| **Payslips** | The ePay layout, and other UK payslips **when gross − deductions = net** adds up exactly. Lines a payslip doesn't have (basic, ESPP, RSU) are simply not shown. |
+| **ISA, savings and pension statements** (any provider) | Kept only when opening value + paid in − paid out + growth − charges = closing value. You name each account once (for example "Vanguard · Junior ISA") and Savings shows one section per account. |
 | **Moneyfarm** ISA quarterly statements | |
 | **Aviva** workplace pension annual statements | |
 | **CSV exports** from UK banks and cards | Any layout with dates, descriptions and amounts. Checked ✓ when it has a balance column; otherwise read but not checked ○. A CSV doesn't say which account it is, so you name it once (or say it's the same account as your PDFs) and the app remembers that layout. |
@@ -28,7 +29,7 @@ The app works out what a file is from what's inside it, not from its name. A fil
 - **Household and personal accounts:** every current account you add is either **Household** (joint or shared) or **Personal**. All household accounts are merged into a single household view, and money moving between them is not counted as income or spending. A personal account is kept apart from the household figures. Once you have one, a switch appears at the top of the Dashboard, Reports, Pay and Documents screens. The first account you add is always the household's.
 - **Reports:** search and filter by text, account or card, dates, in or out, category, payment type and amount, with totals. Save your favourite reports.
 - **Pay:** each payslip from gross to net, pension, tax-year totals.
-- **Savings:** ISA value and allowance, pension value, savings transfers.
+- **Savings:** each ISA, savings and pension account on its own (value, paid in, growth, charges, ISA allowance left), and savings transfers.
 - **Documents:** every statement and payslip you have added, in and out. A grid showing which months are present or missing, card repayments matched to the card statements they paid (so nothing is counted twice), and every statement grouped by account in lists that open and close (for example `Amex (14)`).
 - **Imports you can trust:** each import is saved all at once with a result sheet and an **Undo**. Where files overlap (a CSV over months you already have as PDFs, or two downloads covering the same days), each transaction is counted once; a PDF that adds up wins for its dates. A PDF whose totals don't match can be reviewed: see what it does to the figures, then keep it or leave it out. The Dashboard and Reports say when such a statement is counted.
 
@@ -86,7 +87,7 @@ Plain JavaScript, no build step and no dependencies other than the bundled PDF.j
 |---|---|
 | `index.html`, `app.css` | The page and its styles |
 | `parser.js`, `readers.js`, `readers/monzo.js` | Read the text out of each kind of statement and check the totals |
-| `readers/csv.js`, `readers/smart.js` | The generic CSV reader and the generic PDF reader (last resort, proven results only) |
+| `readers/csv.js`, `readers/smart.js`, `readers/income.js` | The generic CSV reader, the generic bank-PDF reader (last resort, proven results only), and the payslip / ISA / savings / pension reader |
 | `rules.js` | Spending categories and the built-in categorisation rules |
 | `js/main.js` | Start-up |
 | `js/state.js`, `js/model.js`, `js/period.js` | The shared state, transactions and categories, pay months |
@@ -106,6 +107,7 @@ Run from the repository folder with Node (no install needed for the first four):
 node tests/pipeline.test.js        # import routing, outcomes, result sheet
 node tests/book.test.js            # accounts, overlaps, how CSVs reach the figures
 node tests/monzo.test.js           # Monzo PDF reader
+node tests/income.test.js          # payslip, ISA, savings and pension reader
 node tools/csv-eval.js --regen     # CSV reader against ~220 generated files with known answers
 node tools/smart-eval.js tests/smart/fixtures --expect tests/smart/fixtures/expected.json   # generic PDF reader
 ```

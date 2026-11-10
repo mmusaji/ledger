@@ -26,6 +26,30 @@ export function pdfGroups() {
   return out;
 }
 
+/** "What do you call this account?" for savings and pension statements. One tap if the suggested name is right.
+ *  group: { files: [{name, period}], label, suggest, names: [existing names] }. Returns the name, or null to cancel the import. */
+export function askFund(group) {
+  return new Promise(res => {
+    S.sheetLocked = true;
+    const opts = group.names.filter(n => n !== group.suggest).map(n => `<label class="card small" style="display:block;cursor:pointer"><input type="radio" name="fund" value="${esc(n)}"> <b>${esc(n)}</b><br><span class="muted">An account you named earlier</span></label>`).join('');
+    $('#sheet-body').innerHTML = `<div class="stack">
+      <b style="font-size:17px">What do you call this account?</b>
+      <div class="card small"><b>${group.files.length === 1 ? esc(group.files[0].name) : group.files.length + ' statements of the same account'}</b><br>
+        <span class="muted">${esc(group.label)}${group.files.length === 1 && group.files[0].period ? ' · ' + esc(span(group.files[0].period)) : ''}</span></div>
+      <p class="small muted" style="margin:0">Each account is shown on its own in Savings. Name it once and the app remembers.</p>
+      <label class="card small" style="display:block;cursor:pointer"><input type="radio" name="fund" value="" checked> <b>A new account</b></label>
+      ${opts}
+      <label class="field" id="fd-new">Name<input id="fd-name" value="${esc(group.suggest)}" autocomplete="off"></label>
+      <div class="row"><button class="btn ghost" id="fd-cancel">Cancel import</button><button class="btn" id="fd-ok">Save</button></div></div>`;
+    const done = v => { S.sheetLocked = false; $('#sheet').close(); res(v); };
+    const val = () => { const e = document.querySelector('input[name=fund]:checked'); return e ? e.value : ''; };
+    document.querySelectorAll('input[name=fund]').forEach(i => i.addEventListener('change', () => { $('#fd-new').hidden = !!val(); }));
+    $('#fd-cancel').onclick = () => done(null);
+    $('#fd-ok').onclick = () => { const v = val() || $('#fd-name').value.trim(); if (!v) { $('#fd-name').focus(); return; } done(v); };
+    $('#sheet').showModal(); setTimeout(() => $('#fd-name').select(), 60);
+  });
+}
+
 /** group: { files: [{name, rows, period}], kind: 'card'|'current'|'unknown', why, book } */
 export function askAccount(group, opts = {}) {
   const book = group.book; const kind = group.kind;

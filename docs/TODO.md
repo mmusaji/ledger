@@ -35,4 +35,6 @@ Done as one small commit when asked. Nothing here is real data, but it hints at 
 - Housekeeping: delete the remote branch (`git push origin --delete smart-parser`).
 
 ## Other income: payslips, savings, pensions (next priority)
-Today only three layouts are read: one employer's ePay payslip, Moneyfarm ISA quarterlies and Aviva annual pension statements, by exact wording in `readers.js`. Design to follow in `docs/OTHER-INCOME-DESIGN.md`.
+Done in v4.2 (see CHANGELOG): other payslips, ISA/savings and pension statements are read by `readers/income.js` when their own figures add up.
+Still untested on real documents: the readers are tested only on invented layouts. Add real payslip, ISA and pension samples when you have them and check each is read (or refused) correctly.
+Parked: typing a payslip in by hand (Basic: salary and pension %, Advanced: extra lines) with a UK take-home estimate (tax, NI, tax-year rates from 2023/24). It was built and tested in commit 611d616 (`js/tax.js`, `tests/tax.test.js`) and then removed as unused; restore it from there if wanted.

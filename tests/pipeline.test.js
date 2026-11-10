@@ -100,6 +100,35 @@ const PDFHEAD = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 
   S.files[twin.id] = twin.entry; M.rebuild();
   ok(S.statements.length === 3, 'two CSVs covering the same dates are not merged as duplicates');
 
+  // ---- income documents (payslip, ISA, pension): read by readers/income.js and kept only when their own figures add up
+  { const INCOME = require(path.join(root, 'readers/income.js'));
+    const inc = lines => mk({ INCOME, toLines: pages => pages.map(text => ({ text })), RD: { readStatement: () => ({ type: 'unsupported', problems: ['x'] }) }, extractPages: async () => lines });
+    const pdfBytes = name => { const h = new Uint8Array(PDFHEAD), t = new TextEncoder().encode(name), o = new Uint8Array(h.length + t.length); o.set(h); o.set(t, h.length); return o.buffer; }; // distinct bytes, so distinct file ids
+    const rd = (name, lines) => PL.readOne(file(name, pdfBytes(name)), inc(lines));
+    const SLIP = d => ['Payslip', 'Pay Date ' + d, 'Basic Pay 4,000.00', 'Gross Pay 4,000.00', 'Income Tax 600.00', 'National Insurance 250.00', 'Pension 200.00', 'Total Deductions 1,050.00', 'Net Pay 2,950.00'];
+    const p1 = await rd('slip1.pdf', SLIP('25/11/2026'));
+    ok(p1.status === 'added' && p1.mark === '✓' && p1.entry.result.type === 'payslip' && p1.entry.result.net === 295000 && p1.entry.result.ok, 'a payslip whose figures add up is added and checked');
+    ok(p1.entry.result.txns.length === 0, 'a payslip adds no transactions, so it can never be counted twice with the bank deposit');
+    const p2 = await rd('slip2.pdf', SLIP('25/11/2026').map(x => x.replace('2,950.00', '3,950.00')));
+    ok(p2.status === 'failed' && !p2.entry && /payslip/.test(p2.why), 'a payslip that does not add up is refused and keeps nothing');
+    const p3 = await rd('slip3.pdf', SLIP('25/11/2026').filter(x => !/Pay Date/.test(x)));
+    ok(p3.status === 'failed' && /pay date/.test(p3.why), 'a proven payslip with no pay date is refused');
+    const ISA = ['Vanguard Stocks & Shares ISA statement', 'Account number: 1234 5678', 'Statement from 1 July 2026 to 30 September 2026', 'Opening value £10,000.00', 'Money paid in £1,000.00', 'Withdrawals £0.00', 'Investment growth £250.00', 'Fees £25.00', 'Closing value £11,225.00'];
+    const f1 = await rd('isa1.pdf', ISA);
+    ok(f1.status === 'added' && f1.entry.result.type === 'savings' && f1.entry.result.kind === 'isa' && f1.entry.result.end === 1122500, 'an ISA statement that adds up is added');
+    ok(f1.entry.result.fundKey === 'savings|isa|Vanguard|5678' && f1.entry.result.fundSuggest === 'Vanguard · ISA …5678', 'the account key and suggested name come from the provider, kind and last four digits');
+    const f2 = await rd('isa2.pdf', ISA.map(x => x.replace('£11,225.00', '£11,300.00')));
+    ok(f2.status === 'failed' && !f2.entry, 'an ISA statement that does not add up is refused');
+    const nf = await rd('letter.pdf', ['Dear Sir', 'Please find enclosed the details of your appointment', 'Yours sincerely']);
+    ok(nf.status === 'failed' && !nf.entry, 'a document that is none of these is not read and nothing is kept');
+    // in the model: two payslips for one day stay apart; a fund statement takes the name the account was given
+    const pa = await rd('slipA.pdf', SLIP('26/11/2026')), pb = await rd('slipB.pdf', SLIP('26/11/2026').map(x => x.replace('2,950.00', '2,850.00').replace('1,050.00', '1,150.00').replace('Income Tax 600.00', 'Income Tax 700.00')));
+    S.files = { [pa.id]: pa.entry, [pb.id]: pb.entry, [f1.id]: f1.entry }; S.book = { accounts: [], assign: {}, layouts: {}, funds: { [f1.entry.result.fundKey]: 'Mustafa ISA' } }; M.rebuild();
+    ok(S.payslips.length === 2, 'two payslips with the same date but different amounts are both kept');
+    ok(S.funds.length === 1 && S.funds[0].fund === 'Mustafa ISA' && S.statements.find(s => s.type === 'savings').fund === 'Mustafa ISA', 'a fund statement is shown under the name you gave its account');
+    ok(S.txns.length === 0, 'income documents add nothing to the transactions');
+  }
+
   // ---- the browser has no `process`: the generic reader once crashed there (quietly, so every PDF was refused) while passing in Node
   { const src = fs.readFileSync(path.join(root, 'readers/smart.js'), 'utf8'); ok(!/[^.\w]process\.env/.test(src.replace(/typeof process[^\n]*/, '')), 'readers/smart.js never touches `process` directly (browser-safe)'); }
 

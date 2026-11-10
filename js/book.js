@@ -8,7 +8,7 @@
  */
 export const newBook = () => ({ accounts: [], assign: {}, layouts: {} });
 
-export const bookOf = b => ({ accounts: (b && b.accounts) || [], assign: (b && b.assign) || {}, layouts: (b && b.layouts) || {} });
+export const bookOf = b => ({ accounts: (b && b.accounts) || [], assign: (b && b.assign) || {}, layouts: (b && b.layouts) || {}, funds: (b && b.funds) || {} });
 
 /** What a CSV layout looks like, so the same bank export can be recognised next time: the column names it was read from
  *  (never the contents) plus whether it is a card or a current account. */

@@ -1,13 +1,13 @@
 /* Adding statements: the phone's file chooser and files sent with Share. PDFs and CSVs are told apart by what is inside
  * them, read in memory, then discarded. Everything is staged first and saved in one go at the end: if you cancel, or
  * something goes wrong, nothing from that import is kept. A file that cannot be read is never kept. */
-import { CSVR, P, RD, SMART } from './deps.js';
-import { askAccount } from './accountsheet.js';
+import { CSVR, INCOME, P, RD, SMART } from './deps.js';
+import { askAccount, askFund } from './accountsheet.js';
 import { applyChoice, bookOf } from './book.js';
 import { checkNewAccounts } from './accounts.js';
 import { importSheet } from './importview.js';
 import { rebuild } from './model.js';
-import { readOne, summarise } from './pipeline.js';
+import { FUND_LABEL, readOne, summarise } from './pipeline.js';
 import { S } from './state.js';
 import { render, status, statusLine, toast } from './ui.js';
 import { $, store } from './util.js';
@@ -29,7 +29,7 @@ async function addLocalFiles(list) {
   const outcomes = [], staged = {}; let cancelled = false, sum = null;
   try {
     await ensureKey();
-    const ctx = { files: Object.assign({}, S.files), ignored: S.ignored, version: PARSER_VERSION, CSVR, RD, SMART: store.get('smartPdf', true) ? SMART : null, extractPages: bytes => P.extractPages(window.pdfjsLib, bytes) };
+    const ctx = { files: Object.assign({}, S.files), ignored: S.ignored, version: PARSER_VERSION, CSVR, RD, SMART: store.get('smartPdf', true) ? SMART : null, INCOME, toLines: pages => P.toLines(pages), extractPages: bytes => P.extractPages(window.pdfjsLib, bytes) };
     for (let i = 0; i < fileList.length; i++) {
       status(`Reading ${i + 1}/${fileList.length}`); S.progress = (i + 1) / fileList.length;
       const bar = $('#progress div'); if (bar) bar.style.width = (S.progress * 100) + '%';
@@ -54,6 +54,21 @@ async function addLocalFiles(list) {
       if (group[0].entry.result.sig) { work.layouts[sig] = accountId; newLayouts.push(sig); }
       group.forEach(o => { work.assign[o.id] = accountId; o.attached = nameOf(accountId); });
     }
+    // Savings and pension statements: name each account once; the same provider and kind is attached silently after that
+    const newFunds = [], fundBy = {};
+    if (!cancelled) {
+      outcomes.filter(o => o.status === 'added' && ['savings', 'pension'].includes(o.entry.result.type)).forEach(o => { (fundBy[o.entry.result.fundKey] = fundBy[o.entry.result.fundKey] || []).push(o); });
+      work.funds = work.funds || {};
+      for (const [key, group] of Object.entries(fundBy)) {
+        if (work.funds[key]) { group.forEach(o => { o.attached = work.funds[key]; o.remembered = true; }); continue; }
+        S.loading = false; render();
+        const r0 = group[0].entry.result;
+        const names = [...new Set(Object.entries(work.funds).filter(([k]) => k.split('|')[0] === r0.type).map(([, n]) => n))];
+        const nm = await askFund({ files: group.map(o => ({ name: o.name, period: o.period })), label: FUND_LABEL[r0.kind] || 'Savings', suggest: r0.fundSuggest, names });
+        if (nm === null) { cancelled = true; break; }
+        work.funds[key] = nm; newFunds.push(key); group.forEach(o => { o.attached = nm; });
+      }
+    }
     if (cancelled) { toast('Import cancelled. Nothing was saved.'); outcomes.length = 0; return; }
     // commit everything at once
     const before = new Set(Object.keys(S.files));
@@ -64,7 +79,7 @@ async function addLocalFiles(list) {
     outcomes.forEach(o => { if (o.status === 'added' && S.overlap && S.overlap[o.id]) o.overlap = S.overlap[o.id]; });
     // Undo takes back only files that were new; one read again by a newer reader version would be lost entirely
     const fresh = Object.keys(staged).filter(id => !before.has(id));
-    sum = Object.assign(summarise(outcomes), { undo: fresh.length || created.length ? { files: fresh, accounts: created, layouts: newLayouts } : null });
+    sum = Object.assign(summarise(outcomes), { undo: fresh.length || created.length || newFunds.length ? { files: fresh, accounts: created, layouts: newLayouts, funds: newFunds } : null });
     // a batch that changed nothing (everything already known) does not replace the last real import, so its Undo stays
     if (sum.added.length || sum.failed.length) S.lastImport = sum;
     await saveVault();
@@ -86,6 +101,7 @@ export async function undoLastImport() {
   u.files.forEach(id => { delete S.files[id]; delete S.book.assign[id]; });
   S.book.accounts = S.book.accounts.filter(a => !u.accounts.includes(a.id));
   u.layouts.forEach(sig => { delete S.book.layouts[sig]; });
+  (u.funds || []).forEach(k => { delete (S.book.funds || {})[k]; });
   u.accounts.forEach(id => { delete S.accounts[id]; });
   if (!S.demo) store.set('accounts', S.accounts);
   S.lastImport = null; await saveVault(); rebuild(); render(); toast('Last import undone');

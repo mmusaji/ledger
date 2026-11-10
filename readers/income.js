@@ -194,12 +194,26 @@
   /** type 'savings' | 'pension': { kind, period, start, paidIn, paidOut, growth, charges, end, isaAllowanceLeft, checks, confidence, source:'generic', txns:[] }
    *  Proof: start + paidIn − paidOut + growth − charges = end, where every figure used is one the document printed. A document that
    *  prints only a closing value cannot be proved: it is 'unverified'. */
+  /** Who issued the document, if it names one we know (earliest mention wins). Used only to suggest a name for the account. */
+  const PROVIDERS = ['Vanguard', 'Trading 212', 'Moneyfarm', 'Aviva', 'Nutmeg', 'Hargreaves Lansdown', 'AJ Bell', 'Fidelity', 'Scottish Widows', 'Legal & General', 'Standard Life', 'Royal London', 'NEST', "The People's Pension", 'Interactive Investor', 'Freetrade', 'Wealthify', 'Moneybox', 'Plum', 'Chip', 'Penfold', 'Prudential', 'Aegon', 'Zurich', 'Cushon', 'Smart Pension', 'True Potential', 'Santander', 'Halifax', 'Barclays', 'Lloyds', 'Nationwide'];
+  function providerOf(text) {
+    let best = null;
+    PROVIDERS.forEach(p => { const m = new RegExp('(^|[^A-Za-z])' + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z])', 'i').exec(text); if (m && (best === null || m.index < best.i)) best = { i: m.index, p }; });
+    return best ? best.p : '';
+  }
+  /** Only the last four digits of an account, plan or policy number, so two accounts with one provider stay apart. */
+  function refOf(text) {
+    const m = text.match(/(?:account|plan|policy|reference|membership)\s*(?:number|no\.?|ref\.?)?\s*[:#]\s*([A-Z0-9][A-Z0-9 \-]{4,22})/i);
+    if (!m) return ''; const d = m[1].replace(/\D/g, ''); return d.length >= 4 ? d.slice(-4) : '';
+  }
+
   function readFund(lines, docKind) {
     const all = lines.map(l => l.text).join('\n');
     const period = periodOf(all);
     const figs = figures(lines, roleOfFund);
     const vals = role => [...new Set(figs.filter(f => roleOfFund(f.label) === role).map(f => f.amount))];
     const out = { type: docKind, source: 'generic', txns: [], period, checks: {}, problems: [] };
+    out.provider = providerOf(all); out.ref = refOf(all);
     const k = FUND_KIND.find(([, re]) => re.test(all)); out.kind = k ? k[0] : (docKind === 'pension' ? 'workplace' : 'savings');
     const op = vals('opening'), cl = vals('closing'), inn = vals('in'), ou = vals('out'), gr = vals('growth'), ch = vals('charges');
     const allow = all.match(/(?:remaining|unused|left)\s+(?:isa\s+)?allowance[^£\d-]{0,20}(£[\d,]+(?:\.\d{2})?)/i); out.isaAllowanceLeft = allow ? pence(allow[1]) : null;

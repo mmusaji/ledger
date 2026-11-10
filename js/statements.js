@@ -71,6 +71,12 @@ function csvSection(list) {
     ${Object.values(by).map(g => grp('acct-' + g.acct.id, esc(g.acct.name), g.list, `<div class="card"><p class="muted small" style="margin:0 0 6px">${g.acct.kind === 'card' ? 'Credit card' : 'Current account'}${g.acct.link ? ', same account as your PDF statements' : ''}</p><ul class="list">${g.list.slice().reverse().map(rowHtml).join('')}</ul></div>`)).join('')}`;
 }
 
+/** Savings and pension statements read by the generic reader, one list per account name. */
+function fundGroups() {
+  const by = {}; inScope().filter(s => s.fund).slice().reverse().forEach(s => { (by[s.fund] = by[s.fund] || []).push(s); });
+  return Object.entries(by).map(([name, list]) => ['fund-' + name, name, list]);
+}
+
 export function renderData() {
   // remember which lists you opened or closed
   setTimeout(() => $('#view-data').querySelectorAll('details.grp').forEach(d => d.addEventListener('toggle', () => { const m = openMap(); m[d.dataset.grp] = d.open; store.set('openGroups', m); })), 0);
@@ -100,6 +106,7 @@ export function renderData() {
     ${S.ignored.length ? `<div class="card small"><span class="muted">${S.ignored.length} file${S.ignored.length === 1 ? '' : 's'} removed from the app and left out when you add PDFs.</span> <button class="btn ghost slim" data-act="unignore">Use them again</button></div>` : ''}
     ${S.continuity && S.continuity.length ? `<div class="card notice small"><b>Check these CSV accounts:</b><br>${S.continuity.map(c => esc(c.text)).join('<br>')}</div>` : ''}
     ${csvSection(inScope().filter(s => s.type === 'csv'))}
+    ${fundGroups().map(([key, label, list]) => grp('f-' + key, esc(label), list, `<div class="card"><ul class="list">${list.map(rowHtml).join('')}</ul></div>`)).join('')}
     ${groups.map(([type, label]) => { const list = inScope().filter(s => s.type === type).slice().reverse(); return list.length ? grp('t-' + type, label, list, `<div class="card"><ul class="list">${list.map(rowHtml).join('')}</ul></div>`) : ''; }).join('')}
     ${S.skipped.length ? `<h2>Not used (${S.skipped.length})</h2><div class="card small"><ul class="list">${S.skipped.map(s => `<li><div class="who"><b>${esc(s.name)}</b><span>${esc(s.why)}</span></div>${s.id ? `<button class="btn ghost slim" data-act="ignore" data-v="${esc(s.id)}" aria-label="Remove from app">✕</button>` : ''}</li>`).join('')}</ul></div>` : ''}
     ${S.txns.length && !S.demo ? `<div class="card notice good small"><b>Saved on this phone, encrypted${S.meta && S.meta.mode === 'pin' ? ' and locked with your passcode' : ''}.</b> The statement PDFs themselves are never saved.</div>` : ''}`;

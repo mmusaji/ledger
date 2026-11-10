@@ -6,9 +6,9 @@ export const S = {
   overrides: store.get('overrides', {}),
   presets: store.get('presets', []),
   hideOneOffs: store.get('hideOneOffs', false),
-  statements: [], skipped: [], txns: [], payslips: [], isa: [], pension: [],
+  statements: [], skipped: [], txns: [], payslips: [], isa: [], pension: [], funds: [],
   ignored: store.get('ignored', []), // files you removed from the app (left out even if you select the whole folder again)
-  files: {}, lastSync: null, lastImport: null, book: { accounts: [], assign: {}, layouts: {} }, overlap: {}, continuity: [], key: null, meta: null, locked: false, hiddenAt: 0, sheetLocked: false,
+  files: {}, lastSync: null, lastImport: null, book: { accounts: [], assign: {}, layouts: {}, funds: {} }, overlap: {}, continuity: [], key: null, meta: null, locked: false, hiddenAt: 0, sheetLocked: false,
   demo: false, loading: false, progress: 0,
   accounts: store.get('accounts', {}), accountList: [],
   scope: store.get('scope', 'household'),

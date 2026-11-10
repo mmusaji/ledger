@@ -19,7 +19,7 @@ export function rebuild(extraSkipped = []) {
   read.sort((a, b) => (b.result.ok - a.result.ok) || a.name.localeCompare(b.name));
   const seen = new Map(), kept = [];
   read.forEach(e => {
-    const r = e.result; const k = r.type === 'csv' ? 'csv|' + e.id : [r.type, (r.account && r.account.id) || '', (r.holders || []).join(','), r.period.start, r.period.end].join('|');
+    const r = e.result; const k = r.type === 'csv' ? 'csv|' + e.id : [r.type, (r.account && r.account.id) || '', (r.holders || []).join(','), r.period.start, r.period.end, r.source === 'generic' ? [r.net, r.end, r.fundKey].join(',') : ''].join('|'); // a generic payslip or fund statement also differs by its amounts and account, so two people's payslips for one day stay apart
     if (seen.has(k)) skipped.push({ id: e.id, name: e.name, why: 'Duplicate of ' + seen.get(k), dup: true });
     else { seen.set(k, e.name); kept.push(e); }
   });
@@ -30,6 +30,7 @@ export function rebuild(extraSkipped = []) {
     return { id: e.id, name: e.name, type: r.type, institution: a ? a.name : r.institution, period: r.period, ok: r.ok, problems: r.problems || [],
       count: (r.txns || []).length, opening: r.opening, closing: r.closing, summary: r.summary, holders: r.holders, pots: r.pots,
       account: a ? { id: a.link ? a.link.accId : a.id, bank: a.name, last4: '' } : r.account,
+      fund: r.fundKey ? ((S.book.funds || {})[r.fundKey] || r.fundSuggest) : undefined,
       held: e.hold === 'out', acked: e.hold === 'keep',
       csv: r.type === 'csv' ? { src: r.source || 'csv', confidence: r.confidence, mark: r.mark, accountType: r.accountType, accountTypeWhy: r.accountTypeWhy, notes: r.notes || [], acct: a ? { id: a.id, name: a.name, kind: a.kind, role: a.role, payHint: a.payHint || '', link: a.link || null } : null } : undefined };
   }).sort((a, b) => a.period.end.localeCompare(b.period.end));
@@ -89,6 +90,8 @@ export function rebuild(extraSkipped = []) {
   S.payslips = kept.filter(e => e.result.type === 'payslip').map(e => Object.assign({ name: e.name }, e.result)).sort((a, b) => a.payDate.localeCompare(b.payDate));
   S.isa = kept.filter(e => e.result.type === 'moneyfarm').map(e => Object.assign({ name: e.name }, e.result)).sort((a, b) => a.period.end.localeCompare(b.period.end));
   S.pension = kept.filter(e => e.result.type === 'aviva').map(e => Object.assign({ name: e.name }, e.result)).sort((a, b) => a.period.end.localeCompare(b.period.end));
+  // savings and pension statements read by the generic reader, each under the account name the user gave it
+  S.funds = kept.filter(e => e.result.type === 'savings' || e.result.type === 'pension').map(e => Object.assign({ name: e.name, fund: (S.book.funds || {})[e.result.fundKey] || e.result.fundSuggest }, e.result)).sort((a, b) => a.period.end.localeCompare(b.period.end));
   S.skipped = skipped.concat(extraSkipped);
   resolveAccounts();
   recategorise();
