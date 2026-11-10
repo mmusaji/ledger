@@ -37,7 +37,7 @@ export function renderSavings() {
       ${penSince.length ? `<div class="small" style="margin-top:8px">Since then your payslips show <b>${gbp(penSinceAmt)}</b> more paid in (${penSince.length} month${penSince.length === 1 ? '' : 's'}, you + employer). The value itself updates when the next annual statement arrives.</div>` : ''}
     </div>
     ${pen.projectedPot ? `<div class="kpis"><div class="kpi"><div class="label">Projected pot</div><div class="value">${gbp0(pen.projectedPot)}</div><div class="sub">at ${esc(pen.retirementDate || 'retirement')}, Aviva's example</div></div>
-      <div class="kpi"><div class="label">Example yearly income</div><div class="value">${gbp0(pen.projectedIncome)}</div><div class="sub">in today's money, not guaranteed</div></div></div>` : ''}` : '<div class="card muted small">No pension statement yet. Tick it with Pick statements on the Statements tab.</div>'}
+      <div class="kpi"><div class="label">Example yearly income</div><div class="value">${gbp0(pen.projectedIncome)}</div><div class="sub">in today's money, not guaranteed</div></div></div>` : ''}` : '<div class="card muted small">No pension statement yet. Add it with Add statements on the Documents tab.</div>'}
 
     <h2>From the joint account this tax year</h2>
     <div class="card">${Object.keys(byDest).length ? `<ul class="list">${Object.entries(byDest).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<li><div class="who"><b>${esc(k)}</b></div><span class="num">${gbp(v)}</span></li>`).join('')}</ul><div class="muted small">Net of money taken back out. A negative figure means more came out than went in.</div>` : '<span class="muted small">No savings transfers found.</span>'}</div>`;
