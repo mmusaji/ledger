@@ -75,12 +75,12 @@ export function askAccount(group, opts = {}) {
       <p class="small muted" style="margin:0">CSV files do not say which account they are from. Tell the app once and it will remember this layout for next time.</p>
       <div class="stack" id="acct-opts">${options}</div>
       <div class="stack" id="acct-new">
-        <label class="field">Name<input id="an-name" placeholder="${kind === 'card' ? 'e.g. Amex · Fizza' : 'e.g. Monzo · Mustafa'}" autocomplete="off"></label>
+        <label class="field">Name<input id="an-name" placeholder="${kind === 'card' ? 'e.g. Amex · Sam' : 'e.g. Monzo · Sam'}" autocomplete="off"></label>
         <div class="row" id="an-kind"><label><input type="radio" name="an-kind" value="card" ${kind === 'card' ? 'checked' : ''}> Credit card</label><label><input type="radio" name="an-kind" value="current" ${kind === 'current' ? 'checked' : ''}> Current account</label></div>
         <div id="an-role" hidden><div class="row"><label><input type="radio" name="an-role" value="household" checked> Household</label><label><input type="radio" name="an-role" value="personal" ${hasHousehold ? '' : 'disabled'}> Personal</label></div>
           <p class="small muted" style="margin:4px 0 0">${hasHousehold ? 'Household accounts are merged into one view. Personal ones are kept apart.' : 'The app needs one household account first, so this one will be the household account.'}</p></div>
         <label class="field" id="an-pay" hidden>Your bank statement shows payments to this card as<input id="an-hint" placeholder="e.g. AMERICAN EXP" autocomplete="off"></label>
-        <p class="small muted" id="an-help" style="margin:0" hidden>Add " · Name" at the end to see spending by person, for example "Amex · Fizza".</p>
+        <p class="small muted" id="an-help" style="margin:0" hidden>Add " · Name" at the end to see spending by person, for example "Amex · Sam".</p>
       </div>
       <div class="row"><button class="btn ghost" id="an-cancel">${opts.single ? 'Cancel' : 'Cancel import'}</button>${opts.single ? '' : '<button class="btn ghost" id="an-skip">Decide later</button>'}<button class="btn" id="an-ok">Save</button></div></div>`;
     const done = v => { S.sheetLocked = false; $('#sheet').close(); res(v); };

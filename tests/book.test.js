@@ -17,7 +17,7 @@ global.crypto = global.crypto || require('crypto').webcrypto;
 
   // ---- answers from the naming sheet
   const book = B.newBook();
-  const a = B.applyChoice(book, { mode: 'new', name: 'Amex · Fizza', kind: 'card', payHint: 'AMEX' });
+  const a = B.applyChoice(book, { mode: 'new', name: 'Amex · Sam', kind: 'card', payHint: 'AMEX' });
   ok(a.created && a.created.kind === 'card' && a.created.payHint === 'AMEX' && !a.created.role, 'new card account');
   const b = B.applyChoice(book, { mode: 'new', name: 'Monzo', kind: 'current', role: 'whatever' });
   ok(b.created.role === 'household', 'an unknown role falls back to household');

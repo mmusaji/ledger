@@ -4,7 +4,7 @@ A private app for your phone that reads your own statements (PDF or CSV) and tur
 
 **Your statements never leave your device.** There is no server, no account, no analytics and no AI, and no sign-in to Google or anyone else. The app reads each file on your phone, keeps only the transactions it finds (encrypted with a passcode you choose), and throws the file away.
 
-> **Please read before you rely on it.** This is a hobby project shared as-is, with no support and no warranty. It only reads the statements listed below, and it has only been tested in Chrome on Android (not on iPhones or tablets). Every statement carries a mark: ✓ when its own balances or totals prove every line, ○ when a CSV has nothing to check it against, ⚠ when a PDF's totals don't match. Tap any mark to see what it means. Always treat the numbers as a helpful summary, not as your official records.
+> **Please read before you rely on it.** This is a hobby project shared as-is, with no support and no warranty. It was built around one household's banks and cards, so other layouts may be rough, and the payslip, ISA and pension readers have so far been tried only on invented examples. It only reads the statements listed below, and it has only been tested in Chrome on Android (not on iPhones or tablets). Every statement carries a mark: ✓ when its own balances or totals prove every line, ○ when a CSV has nothing to check it against, ⚠ when a PDF's totals don't match. Tap any mark to see what it means. Always treat the numbers as a helpful summary, not as your official records.
 
 ## What it reads
 

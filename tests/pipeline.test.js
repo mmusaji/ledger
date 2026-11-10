@@ -123,9 +123,9 @@ const PDFHEAD = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 
     ok(nf.status === 'failed' && !nf.entry, 'a document that is none of these is not read and nothing is kept');
     // in the model: two payslips for one day stay apart; a fund statement takes the name the account was given
     const pa = await rd('slipA.pdf', SLIP('26/11/2026')), pb = await rd('slipB.pdf', SLIP('26/11/2026').map(x => x.replace('2,950.00', '2,850.00').replace('1,050.00', '1,150.00').replace('Income Tax 600.00', 'Income Tax 700.00')));
-    S.files = { [pa.id]: pa.entry, [pb.id]: pb.entry, [f1.id]: f1.entry }; S.book = { accounts: [], assign: {}, layouts: {}, funds: { [f1.entry.result.fundKey]: 'Mustafa ISA' } }; M.rebuild();
+    S.files = { [pa.id]: pa.entry, [pb.id]: pb.entry, [f1.id]: f1.entry }; S.book = { accounts: [], assign: {}, layouts: {}, funds: { [f1.entry.result.fundKey]: 'Sam ISA' } }; M.rebuild();
     ok(S.payslips.length === 2, 'two payslips with the same date but different amounts are both kept');
-    ok(S.funds.length === 1 && S.funds[0].fund === 'Mustafa ISA' && S.statements.find(s => s.type === 'savings').fund === 'Mustafa ISA', 'a fund statement is shown under the name you gave its account');
+    ok(S.funds.length === 1 && S.funds[0].fund === 'Sam ISA' && S.statements.find(s => s.type === 'savings').fund === 'Sam ISA', 'a fund statement is shown under the name you gave its account');
     ok(S.txns.length === 0, 'income documents add nothing to the transactions');
   }
 

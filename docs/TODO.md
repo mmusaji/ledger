@@ -25,9 +25,7 @@ To undo the whole v4.1 merge: `git revert -m 1 57307a6`, or reset `main` to the 
 
 ## Before sharing with other people: personal details to remove
 Done as one small commit when asked. Nothing here is real data, but it hints at one household.
-- `js/accountsheet.js` (lines ~54 and ~59): the name examples "Amex · Fizza" and "Monzo · Mustafa" show in the app. Use neutral ones ("Amex · Sam").
-- `tests/book.test.js`: "Amex · Fizza".
-- `readers.js`, payslip comment: "Red Hat / ePay format" names an employer. Say "ePay layout".
+- DONE (v4.2): example names in the app and tests are now neutral ("Amex · Sam"); the payslip comment in `readers.js` no longer names an employer; the Documents coverage grid no longer assumes one household's statement dates or shows rows for banks you have not added.
 - `js/pay.js` and `js/demo.js`: ESPP, RSU and car-allowance wording and fields are specific to one employer's payslip. Keep the features, but label them generically ("share purchase plan", "share awards") and hide them when the payslip has none.
 - `rules.js`: the built-in rules name AVIVA, MONEYFARM, TRADING 212 and VANGUARD. These are public provider names and fine, but check no rule is tied to one person's payees.
 - `README.md`: add one line that the app was built around one household's banks, so other layouts may be rough.

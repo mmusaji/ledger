@@ -63,7 +63,7 @@ Decision deferred until the reader's measured reliability (section 6) is known: 
 
 ## 5b. Payslips (to discuss separately)
 
-Payslips have a different shape (labelled pay and deduction lines, not a dated table) but are also provable: earnings add to gross, deductions add to the total, gross minus deductions equals net, year-to-date figures move consistently month to month. The existing Red Hat reader stays as is. A generic payslip reader would be a separate experiment with its own test set; it should not be mixed into the statement reader.
+Payslips have a different shape (labelled pay and deduction lines, not a dated table) but are also provable: earnings add to gross, deductions add to the total, gross minus deductions equals net, year-to-date figures move consistently month to month. The existing ePay reader stays as is. The generic payslip reader is separate (`readers/income.js`, with its own tests) and is not mixed into the statement reader.
 
 ## 5c. Upload routing and the CSV reader (agreed direction, not built)
 

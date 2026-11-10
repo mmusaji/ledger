@@ -175,7 +175,7 @@
     return d.slice(0, 32).replace(/\b([A-Z])([A-Z']+)\b/g, (_, a, b) => a + b.toLowerCase()) || desc.slice(0, 32);
   }
 
-  // ---------------------------------------------------------------- Payslip (Red Hat / ePay format)
+  // ---------------------------------------------------------------- Payslip (ePay layout)
   function parsePayslip(lines) {
     const all = lines.map(l => l.text).join('\n');
     const pd = all.match(/Pay Day (\d{2})\/(\d{2})\/(\d{4})/);

@@ -7,7 +7,7 @@ import { S } from './state.js';
 import { $, MON, addDays, daysBetween, esc, gbp, isoOf, monthLabel, nice, niceShort, pad, store, today } from './util.js';
 
 const MONEY = ['santander', 'amex', 'tesco', 'monzo'];
-const TYPES = [['santander', 'Santander', 5], ['amex', 'Amex', 19], ['tesco', 'Tesco CC', 24], ['payslip', 'Payslips', 26]];
+const TYPES = [['santander', 'Santander'], ['amex', 'Amex'], ['tesco', 'Tesco credit card'], ['payslip', 'Payslips']];
 
 /** The statements that belong to the view: household = its accounts, cards, payslips, ISA and pension; a personal
  *  account = just that account. Statements for an account that has no role yet are not shown in either. */
@@ -19,7 +19,9 @@ function inScope() {
 function coverage(list) {
   const end = today(); const months = [];
   for (let i = 5; i >= 0; i--) { const d = new Date(end + 'T00:00:00Z'); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - i); months.push(isoOf(d).slice(0, 7)); }
-  const types = activeScope() === 'household' ? TYPES.concat(list.some(s => s.type === 'monzo') ? [['monzo', 'Monzo', 4]] : []) : [[list[0] ? list[0].type : 'monzo', list[0] ? (list[0].institution || 'Account') : 'Account', 4]];
+  // only the kinds of document this person actually has, each due on the day of the month their own latest one ended (never a fixed day)
+  const dayOf = t => { const l = list.filter(s => s.type === t); return l.length ? +l[l.length - 1].period.end.slice(8, 10) : 5; };
+  const types = activeScope() === 'household' ? [...TYPES.map(([t, l]) => [t, l, dayOf(t)]).filter(([t]) => list.some(s => s.type === t)), ...(list.some(s => s.type === 'monzo') ? [['monzo', 'Monzo', 4]] : [])] : [[list[0] ? list[0].type : 'monzo', list[0] ? (list[0].institution || 'Account') : 'Account', 4]];
   const rows = types.map(([type, label, day]) => ({ type, label, cells: months.map(m => {
     // a statement of a current account can cover several months, so it counts for every month it reaches the middle of
     const st = list.filter(s => s.type === type && (type === 'monzo' ? s.period.start <= m + '-15' && s.period.end >= m + '-15' : s.period.end.slice(0, 7) === m));
