@@ -62,7 +62,7 @@ export function renderHome() {
   const pc = [['latest', 'Pay month'], ['3', '3 months'], ['6', '6 months'], ['12', '12 months'], ['tax', 'Tax year'], ['all', 'All']];
 
   el.innerHTML = `
-    ${S.demo ? `<div class="card notice small">You are looking at <b>invented sample data</b>. Add your statements from the Statements tab.</div>` :
+    ${S.demo ? `<div class="card notice small">You are looking at <b>invented sample data</b>. Add your statements from the Documents tab.</div>` :
       `<div class="row small"><span class="muted">${S.loading ? 'Reading…' : 'Updated ' + esc(synced)}</span><button class="btn ghost slim" data-act="add-local" ${S.loading ? 'disabled' : ''}>Add statements</button></div>`}
     ${scopeBar()}${figuresNotice()}
     <div class="chips" role="tablist">${pc.map(([k, l]) => `<button class="chip ${S.period === k ? 'on' : ''}" data-act="period" data-v="${k}">${l}</button>`).join('')}</div>

@@ -1,4 +1,4 @@
-/* Tap a statement on the Statements screen: what the app knows about it, what it does to the figures, and what you can do. */
+/* Tap a statement on the Documents screen: what the app knows about it, what it does to the figures, and what you can do. */
 import { askAccount } from './accountsheet.js';
 import { MARK_TEXT } from './pipeline.js';
 import { applyChoice } from './book.js';

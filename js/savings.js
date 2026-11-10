@@ -28,7 +28,7 @@ export function renderSavings() {
       <div class="kpi"><div class="label">ISA allowance left</div><div class="value">${isa.isaAllowanceLeft !== null && isa.isaAllowanceLeft !== undefined ? gbp0(isa.isaAllowanceLeft) : '—'}</div><div class="sub">per Moneyfarm, ${niceShort(isa.period.end)}</div></div>
       <div class="kpi"><div class="label">Paid in this tax year</div><div class="value">${gbp0(isaTyIn)}</div><div class="sub">from statements</div></div>
       <div class="kpi"><div class="label">Fees (all statements)</div><div class="value">${gbp0(-sum(S.isa, x => x.fees || 0))}</div><div class="sub">${S.isa.length} quarter${S.isa.length === 1 ? '' : 's'}</div></div>
-    </div>` : '<div class="card muted small">No Moneyfarm statements yet. Tick them with Pick statements on the Statements tab.</div>'}
+    </div>` : '<div class="card muted small">No ISA statements yet. Add them with Add statements on the Documents tab.</div>'}
 
     <h2>Workplace pension</h2>
     ${pen ? `<div class="card">

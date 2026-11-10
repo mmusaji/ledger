@@ -1,5 +1,8 @@
 # Changes
 
+## Unreleased
+- The **Statements** tab is now **Documents**: it holds everything you add (bank and card statements, payslips, ISA and pension statements), money in and out. Screen text that still said "Pick statements" now says "Add statements".
+
 ## v4.1 (from branch `smart-parser`)
 
 **CSV statements.** Bank and card CSV exports can be added alongside PDFs; the app tells them apart by what is inside the file. A CSV with a balance column is checked line by line (✓); one without is read but not checked (○). A CSV does not say which account it is from, so the first time a layout is seen the app asks once ("Which account is this?": a new card or current account, or the same account as your PDFs) and remembers it.

@@ -25,18 +25,18 @@ The app works out what a file is from what's inside it, not from its name. A fil
 ## What you get
 
 - **Dashboard** by pay month (start day adjustable in **Settings**, default 6th; a pay month the statements only partly cover is left out and flagged): income, spending, left over, one-off payments (with a switch to hide them), who spent what, spending by category, bank balance, direct debits and top payees.
-- **Household and personal accounts:** every current account you add is either **Household** (joint or shared) or **Personal**. All household accounts are merged into a single household view, and money moving between them is not counted as income or spending. A personal account is kept apart from the household figures. Once you have one, a switch appears at the top of the Dashboard, Reports, Pay and Statements screens. The first account you add is always the household's.
+- **Household and personal accounts:** every current account you add is either **Household** (joint or shared) or **Personal**. All household accounts are merged into a single household view, and money moving between them is not counted as income or spending. A personal account is kept apart from the household figures. Once you have one, a switch appears at the top of the Dashboard, Reports, Pay and Documents screens. The first account you add is always the household's.
 - **Reports:** search and filter by text, account or card, dates, in or out, category, payment type and amount, with totals. Save your favourite reports.
 - **Pay:** each payslip from gross to net, pension, tax-year totals.
 - **Savings:** ISA value and allowance, pension value, savings transfers.
-- **Statements:** a grid showing which months are present or missing, card repayments matched to the card statements they paid (so nothing is counted twice), and every statement grouped by account in lists that open and close (for example `Amex (14)`).
+- **Documents:** every statement and payslip you have added, in and out. A grid showing which months are present or missing, card repayments matched to the card statements they paid (so nothing is counted twice), and every statement grouped by account in lists that open and close (for example `Amex (14)`).
 - **Imports you can trust:** each import is saved all at once with a result sheet and an **Undo**. Where files overlap (a CSV over months you already have as PDFs, or two downloads covering the same days), each transaction is counted once; a PDF that adds up wins for its dates. A PDF whose totals don't match can be reviewed: see what it does to the figures, then keep it or leave it out. The Dashboard and Reports say when such a statement is counted.
 
 ## Try it
 
 1. On your phone, open the link you were sent in **Chrome**, then tap ⋮ → **Install app** (or **Add to Home screen**).
 2. Tap **Explore with sample data** to look around with invented numbers. To open the demo any time without touching your own data, add `?demo` to the address.
-3. When you're ready, go to **Statements → Add statements** and choose your statements (PDFs and CSVs can be mixed). In the file chooser you can pick from any folder on your phone, or from Google Drive (tap ☰). Use **⋮ → Select all** inside a folder. Android can't select a whole folder, only the files in it.
+3. When you're ready, go to **Documents → Add statements** and choose your statements (PDFs and CSVs can be mixed). In the file chooser you can pick from any folder on your phone, or from Google Drive (tap ☰). Use **⋮ → Select all** inside a folder. Android can't select a whole folder, only the files in it.
    - On Android you can also select statements in the **Files** or **Google Drive** app, then **Share → Ledger**.
 4. When the first files are read, choose a **passcode**. It encrypts what's saved on your phone. If you forget it, you can erase the saved data and add the statements again. Your statements are untouched wherever you keep them.
 

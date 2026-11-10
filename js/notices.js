@@ -14,5 +14,5 @@ export function figuresNotice() {
   return `<div class="card notice small">
     ${bad.length ? `<b>${bad.length} statement${bad.length === 1 ? '' : 's'} counted here did not add up</b> (${bad.slice(0, 3).map(label).join(', ')}${bad.length > 3 ? '…' : ''}). Totals for those months could be off.<br>` : ''}
     ${out.length ? `<b>${out.length} statement${out.length === 1 ? ' is' : 's are'} left out of these figures</b> (${out.slice(0, 3).map(label).join(', ')}${out.length > 3 ? '…' : ''}), so those months show less.<br>` : ''}
-    <button class="btn ghost slim" data-view="data" style="margin-top:6px">Review on Statements</button></div>`;
+    <button class="btn ghost slim" data-view="data" style="margin-top:6px">Review in Documents</button></div>`;
 }

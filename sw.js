@@ -1,5 +1,5 @@
 // Caches only the app's own files so it opens quickly. Never touches anything outside the app's own files.
-const CACHE = 'ledger-v22';
+const CACHE = 'ledger-v23';
 const SHELL = ['./', 'index.html', 'app.css', 'parser.js', 'readers.js', 'readers/monzo.js', 'readers/csv.js', 'readers/smart.js', 'rules.js', 'vendor/pdf.min.js', 'vendor/pdf.worker.min.js', 'icon.svg', 'manifest.webmanifest', 'js/accounts.js', 'js/accountsheet.js', 'js/book.js', 'js/charts.js', 'js/demo.js', 'js/deps.js', 'js/events.js', 'js/home.js', 'js/importview.js', 'js/ingest.js', 'js/main.js', 'js/model.js', 'js/notices.js', 'js/pay.js', 'js/period.js', 'js/pipeline.js', 'js/reports.js', 'js/savings.js', 'js/settings.js', 'js/state.js', 'js/stmtsheet.js', 'js/statements.js', 'js/txn.js', 'js/ui.js', 'js/util.js', 'js/vault.js'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== 'ledger-inbox').map(k => caches.delete(k)))).then(() => self.clients.claim())));

@@ -9,7 +9,7 @@ export function renderPay() {
   const el = $('#view-pay');
   // in a personal account only the payslips whose net pay arrived in that account are shown
   const ps = activeScope() === 'household' ? S.payslips : S.payslips.filter(x => scopeTxns().some(t => isCurrent(t) && t.amount === x.net && Math.abs(daysBetween(x.payDate, t.date)) <= 7));
-  if (!ps.length) return emptyState(el, activeScope() === 'household' ? 'No payslips yet. Tick your payslips with Pick statements on the Statements tab.' : 'No payslips are paid into this account. Its income is money transferred in from the household account.', scopeBar());
+  if (!ps.length) return emptyState(el, activeScope() === 'household' ? 'No payslips yet. Add them with Add statements on the Documents tab.' : 'No payslips are paid into this account. Its income is money transferred in from the household account.', scopeBar());
   if (S.payIdx === null || S.payIdx >= ps.length) S.payIdx = ps.length - 1;
   const p = ps[S.payIdx];
   const gross = p.grossBeforePension;

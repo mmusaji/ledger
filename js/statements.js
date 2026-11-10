@@ -1,4 +1,4 @@
-/* Statements screen: what has been added, what is missing, card repayments. */
+/* Documents screen (the Statements tab): everything that has been added, in and out: what is missing, card repayments. */
 import { scopeBar } from './charts.js';
 import { lastImportCard } from './importview.js';
 import { MARK_TEXT } from './pipeline.js';
